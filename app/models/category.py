@@ -22,6 +22,9 @@ class Category(Base):
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     color: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    catalog_slug: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = created_at_col()
 
 

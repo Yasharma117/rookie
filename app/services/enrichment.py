@@ -68,6 +68,8 @@ async def enrich_link(link_id: UUID) -> None:
                         assigned_by=AssignedBy.model,
                     ).on_conflict_do_nothing(index_elements=["link_id", "category_id"])
                     await session.execute(stmt)
+                # If categories is empty (user not onboarded yet) we skip
+                # classification — the link still gets enriched metadata.
 
                 link.status = LinkStatus.enriched
                 link.enriched_at = datetime.now(timezone.utc)
