@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-latest"
 
+    clerk_publishable_key: str = ""
+    clerk_secret_key: str = ""
+    clerk_issuer: str = ""
+    clerk_jwks_url: str = ""
+
     s3_endpoint_url: str
     s3_access_key: str
     s3_secret_key: str

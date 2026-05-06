@@ -21,6 +21,18 @@ logger = logging.getLogger(__name__)
 class CategoryChoice:
     id: UUID
     name: str
+    description: str | None = None
+
+
+def _format_categories(categories: list[CategoryChoice]) -> str:
+    """Render categories as a bulleted list with descriptions for the LLM."""
+    lines = []
+    for c in categories:
+        if c.description:
+            lines.append(f"- {c.name}: {c.description}")
+        else:
+            lines.append(f"- {c.name}")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -61,7 +73,7 @@ class OpenAIClassifier:
         by_name = {c.name: c.id for c in categories}
         other_id = by_name.get("Other") or next(iter(by_name.values()))
 
-        category_list = "\n".join(f"- {c.name}" for c in categories)
+        category_list = _format_categories(categories)
         content = (
             f"Title: {title or '(missing)'}\n"
             f"Description: {description or '(missing)'}\n"
@@ -76,7 +88,9 @@ class OpenAIClassifier:
                         "role": "system",
                         "content": (
                             "Classify the link into exactly one of the user's categories. "
-                            "If nothing fits well, choose 'Other'. "
+                            "Each category includes a description of what it covers. "
+                            "Pick the category whose description best fits the link. "
+                            "If nothing fits well, choose 'Other'.\n\n"
                             f"Available categories:\n{category_list}"
                         ),
                     },
@@ -125,11 +139,13 @@ class GeminiClassifier:
         by_name = {c.name: c.id for c in categories}
         other_id = by_name.get("Other") or next(iter(by_name.values()))
         names = [c.name for c in categories]
-        category_list = ", ".join(names)
+        category_list = _format_categories(categories)
 
         prompt = (
-            f"Classify the link into exactly one of: {category_list}. "
-            "If nothing fits well, choose 'Other'.\n\n"
+            "Classify the link into exactly one of the categories below. "
+            "Each category has a description of what it covers — pick the one "
+            "whose description best fits the link. If nothing fits well, choose 'Other'.\n\n"
+            f"Available categories:\n{category_list}\n\n"
             f"Title: {title or '(missing)'}\n"
             f"Description: {description or '(missing)'}\n"
             f"Source platform: {source_platform}"

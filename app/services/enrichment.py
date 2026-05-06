@@ -15,6 +15,7 @@ from app.db import AsyncSessionLocal
 from app.models import Category, Link, LinkCategory
 from app.schemas.enums import AssignedBy, LinkStatus
 from app.services import metadata, storage
+from app.services.catalog import description_for_slug
 from app.services.classifier import CategoryChoice, get_classifier
 
 
@@ -22,7 +23,14 @@ async def _user_categories(session: AsyncSession, user_id: UUID) -> list[Categor
     rows = (
         await session.execute(select(Category).where(Category.user_id == user_id))
     ).scalars().all()
-    return [CategoryChoice(id=c.id, name=c.name) for c in rows]
+    return [
+        CategoryChoice(
+            id=c.id,
+            name=c.name,
+            description=description_for_slug(c.catalog_slug),
+        )
+        for c in rows
+    ]
 
 
 async def enrich_link(link_id: UUID) -> None:

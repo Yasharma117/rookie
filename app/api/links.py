@@ -1,12 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, status
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
+from sqlalchemy import delete, select
 
-from app.deps import CurrentUser, SessionDep
+from app.deps import CurrentUser, IngestUser, SessionDep
 from app.models import Category, Link, LinkCategory
-from app.schemas.link import CategoryRef, LinkCreate, LinkOut
+from app.schemas.enums import AssignedBy
+from app.schemas.link import CategoryRef, LinkCreate, LinkOut, LinkUpdate
 from app.services import storage
 from app.services.enrichment import enrich_link
 from app.services.url_normalizer import canonicalize, detect_platform
@@ -45,7 +45,7 @@ async def _to_out(session, link: Link) -> LinkOut:
 async def create_link(
     payload: LinkCreate,
     background: BackgroundTasks,
-    user: CurrentUser,
+    user: IngestUser,
     session: SessionDep,
 ) -> LinkOut:
     source_url = str(payload.url)
@@ -103,6 +103,75 @@ async def get_link(link_id: UUID, user: CurrentUser, session: SessionDep) -> Lin
         )
     ).scalar_one_or_none()
     if link is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Link not found")
     return await _to_out(session, link)
+
+
+@router.patch("/{link_id}", response_model=LinkOut)
+async def update_link(
+    link_id: UUID,
+    payload: LinkUpdate,
+    user: CurrentUser,
+    session: SessionDep,
+) -> LinkOut:
+    link = (
+        await session.execute(
+            select(Link).where(Link.id == link_id, Link.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail="Link not found")
+
+    if payload.title is not None:
+        link.title = payload.title
+    if payload.description is not None:
+        link.description = payload.description
+
+    if payload.category_ids is not None:
+        unique_ids = list(dict.fromkeys(payload.category_ids))
+
+        owned = set(
+            (
+                await session.execute(
+                    select(Category.id).where(
+                        Category.user_id == user.id, Category.id.in_(unique_ids)
+                    )
+                )
+            ).scalars()
+        )
+        invalid = [str(cid) for cid in unique_ids if cid not in owned]
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Category id(s) not found for this user: {', '.join(invalid)}",
+            )
+
+        await session.execute(
+            delete(LinkCategory).where(LinkCategory.link_id == link.id)
+        )
+        for cid in unique_ids:
+            session.add(
+                LinkCategory(
+                    link_id=link.id,
+                    category_id=cid,
+                    confidence=None,
+                    assigned_by=AssignedBy.user,
+                )
+            )
+
+    await session.commit()
+    await session.refresh(link)
+    return await _to_out(session, link)
+
+
+@router.delete("/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_link(
+    link_id: UUID, user: CurrentUser, session: SessionDep
+) -> Response:
+    result = await session.execute(
+        delete(Link).where(Link.id == link_id, Link.user_id == user.id)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Link not found")
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

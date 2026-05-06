@@ -22,3 +22,11 @@ class AssignedBy(StrEnum):
     user = "user"
     model = "model"
     rule = "rule"
+
+
+class IngestChannel(StrEnum):
+    share_sheet = "share_sheet"
+    telegram = "telegram"
+    whatsapp = "whatsapp"
+    email = "email"
+    web = "web"

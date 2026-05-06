@@ -68,3 +68,12 @@ CATALOG_BY_SLUG = {entry.slug: entry for entry in CATALOG}
 
 def is_valid_slug(slug: str) -> bool:
     return slug in CATALOG_BY_SLUG
+
+
+def description_for_slug(slug: str | None) -> str | None:
+    if slug is None:
+        return None
+    if slug == OTHER.slug:
+        return OTHER.description
+    entry = CATALOG_BY_SLUG.get(slug)
+    return entry.description if entry else None

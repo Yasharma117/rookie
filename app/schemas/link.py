@@ -10,6 +10,12 @@ class LinkCreate(BaseModel):
     url: HttpUrl
 
 
+class LinkUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    category_ids: list[UUID] | None = None  # if provided, replaces all assignments
+
+
 class CategoryRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

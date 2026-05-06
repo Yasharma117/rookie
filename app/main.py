@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api import categories as categories_api
+from app.api import ingest_tokens as ingest_tokens_api
 from app.api import links as links_api
 from app.api import onboarding as onboarding_api
 from app.config import settings
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
     app.include_router(onboarding_api.router)
     app.include_router(links_api.router)
     app.include_router(categories_api.router)
+    app.include_router(ingest_tokens_api.router)
     return app
 
 
