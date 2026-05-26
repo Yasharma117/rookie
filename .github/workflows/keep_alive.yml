@@ -1,0 +1,17 @@
+name: Keep Alive
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent the Render Free Tier from spinning down
+    - cron: '*/10 * * * *'
+  # Allows you to manually trigger the ping from the Actions tab on GitHub if desired
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Render Server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send HTTP Ping
+        run: |
+          curl -I https://rookie-x5yh.onrender.com/health
