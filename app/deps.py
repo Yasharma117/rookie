@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
@@ -20,7 +20,7 @@ async def _user_from_clerk(session: AsyncSession, token: str) -> User:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Clerk token: {e}",
-        )
+        ) from e
 
     clerk_user_id = claims["sub"]
     user = (
@@ -62,7 +62,7 @@ async def _user_from_ingest_token(session: AsyncSession, raw_token: str) -> User
     await session.execute(
         update(IngestToken)
         .where(IngestToken.id == token_row.id)
-        .values(last_used_at=datetime.now(timezone.utc))
+        .values(last_used_at=datetime.now(UTC))
     )
     await session.commit()
     return user

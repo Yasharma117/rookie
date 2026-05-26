@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
 
+import extruct
 import httpx
 from bs4 import BeautifulSoup
 
@@ -56,6 +57,54 @@ def _parse_html(html: str) -> FetchedMetadata:
     )
 
 
+def _parse_structured_data(html: str, base_url: str) -> FetchedMetadata | None:
+    """Extract JSON-LD / microdata via extruct.
+
+    Returns a FetchedMetadata if at least a title is found, otherwise None.
+    Works especially well for recipe sites, news articles, and e-commerce pages
+    that embed schema.org structured data — giving the classifier much richer signal
+    than raw OG tags.
+    """
+    try:
+        data = extruct.extract(
+            html,
+            base_url=base_url,
+            syntaxes=["json-ld", "microdata"],
+            uniform=True,
+        )
+    except Exception:
+        return None
+
+    for item in data.get("json-ld", []) + data.get("microdata", []):
+        name = item.get("name") or item.get("headline")
+        desc = item.get("description") or item.get("abstract")
+
+        author_raw = item.get("author")
+        author: str | None = None
+        if isinstance(author_raw, dict):
+            author = author_raw.get("name")
+        elif isinstance(author_raw, list) and author_raw:
+            first = author_raw[0]
+            author = first.get("name") if isinstance(first, dict) else str(first)
+
+        thumb = item.get("image") or item.get("thumbnailUrl")
+        if isinstance(thumb, dict):
+            thumb = thumb.get("url")
+        elif isinstance(thumb, list) and thumb:
+            first_thumb = thumb[0]
+            thumb = first_thumb.get("url") if isinstance(first_thumb, dict) else str(first_thumb)
+
+        if name:
+            return FetchedMetadata(
+                title=str(name),
+                description=str(desc) if desc else None,
+                author=author,
+                thumbnail_url=str(thumb) if thumb else None,
+                raw={"json-ld": item},
+            )
+    return None
+
+
 async def _fetch_oembed(
     client: httpx.AsyncClient, platform: SourcePlatform, url: str
 ) -> FetchedMetadata | None:
@@ -103,6 +152,12 @@ async def fetch_metadata(
         ctype = r.headers.get("content-type", "")
         if "html" not in ctype.lower():
             return FetchedMetadata()
+
+        # Prefer structured data (JSON-LD / microdata) — richer than OG tags
+        structured = _parse_structured_data(r.text, url)
+        if structured and structured.title:
+            return structured
+
         return _parse_html(r.text)
     finally:
         if own:

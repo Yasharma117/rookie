@@ -1,9 +1,19 @@
 """LLM-backed link classifier.
 
-Abstracted behind a Protocol so the OpenAI implementation can be swapped
-for Anthropic (or any other provider) by changing one line in enrichment.py.
+Abstracted behind a Protocol so the implementation can be swapped
+by changing one line in enrichment.py.
+
+Classifier priority (get_classifier):
+  1. OpenRouterClassifier  — if OPENROUTER_API_KEY is set
+     Multi-model waterfall: gemini-2.0-flash:nitro → gpt-4.1-nano → llama-3.3-70b
+     Uses OpenRouter's native model fallback (one HTTP request, server-side failover).
+  2. GeminiClassifier      — if GEMINI_API_KEY is set
+  3. OpenAIClassifier      — if OPENAI_API_KEY looks valid
+  4. FakeClassifier        — dev fallback, always returns Other
 """
+import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -202,7 +212,121 @@ class FakeClassifier:
         return ClassificationResult(category_id=other.id, confidence=0.0, reason="fake")
 
 
+class OpenRouterClassifier:
+    """Multi-model waterfall via OpenRouter's native model fallback.
+
+    Fallback order (handled server-side by OpenRouter — single HTTP request):
+      1. google/gemini-2.0-flash:nitro  — fastest routing, ~300ms TTFT
+      2. openai/gpt-4.1-nano            — reliable JSON schema adherence
+      3. meta-llama/llama-3.3-70b-instruct  — open-source, near-zero cost fallback
+
+    Uses response-healing plugin to auto-fix malformed JSON.
+    Uses require_parameters=True so only providers supporting json_schema are used.
+    """
+
+    _FALLBACK_MODELS = [
+        "google/gemini-2.0-flash-lite:free",
+        "meta-llama/llama-3-8b-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+    ]
+
+    def __init__(self, api_key: str) -> None:
+        self._client = AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": "https://becauseyssaidso.app",
+                "X-Title": "Rookie Link Classifier",
+            },
+        )
+
+    async def classify(
+        self,
+        title: str | None,
+        description: str | None,
+        source_platform: str,
+        categories: list[CategoryChoice],
+    ) -> ClassificationResult:
+        t0 = time.monotonic()
+        by_name = {c.name: c.id for c in categories}
+        other_id = by_name.get("Other") or next(iter(by_name.values()))
+
+        category_list = _format_categories(categories)
+        names = [c.name for c in categories]
+        content = (
+            f"Title: {title or '(missing)'}\n"
+            f"Description: {description or '(missing)'}\n"
+            f"Source platform: {source_platform}"
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "category_name": {"type": "string", "enum": names},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "reason": {"type": "string", "maxLength": 300},
+            },
+            "required": ["category_name", "confidence", "reason"],
+            "additionalProperties": False,
+        }
+
+        try:
+            resp = await self._client.chat.completions.create(
+                model=self._FALLBACK_MODELS[0],  # primary; OR handles fallback
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Classify the link into exactly one of the user's categories. "
+                            "Each category includes a description of what it covers. "
+                            "Pick the category whose description best fits the link. "
+                            "If nothing fits well, choose 'Other'.\n\n"
+                            f"Available categories:\n{category_list}"
+                        ),
+                    },
+                    {"role": "user", "content": content},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "classification_result",
+                        "strict": True,
+                        "schema": schema,
+                    },
+                },
+                max_tokens=100,
+                timeout=8.0,
+                extra_body={
+                    "models": self._FALLBACK_MODELS,  # native OR fallback chain
+                    "provider": {
+                        "sort": "latency",
+                        "require_parameters": True,  # json_schema-capable providers only
+                        "allow_fallbacks": True,
+                    },
+                    "plugins": [{"id": "response-healing"}],  # auto-fix malformed JSON
+                },
+            )
+            raw = json.loads(resp.choices[0].message.content)
+            chosen_id = by_name.get(raw["category_name"], other_id)
+            ms = int((time.monotonic() - t0) * 1000)
+            logger.info(
+                '"event":"classify_ok","provider":"openrouter","ms":%d,"confidence":%.2f',
+                ms, raw["confidence"]
+            )
+            return ClassificationResult(
+                category_id=chosen_id,
+                confidence=raw["confidence"],
+                reason=raw.get("reason", ""),
+            )
+        except Exception as e:
+            logger.warning("OpenRouter classifier failed: %s: %s", type(e).__name__, e)
+            return ClassificationResult(
+                category_id=other_id, confidence=0.0, reason="classifier error"
+            )
+
+
 def get_classifier() -> Classifier:
+    if settings.openrouter_api_key:
+        return OpenRouterClassifier(api_key=settings.openrouter_api_key)
     if settings.gemini_api_key:
         return GeminiClassifier(
             api_key=settings.gemini_api_key, model=settings.gemini_model

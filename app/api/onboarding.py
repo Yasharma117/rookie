@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
@@ -70,7 +70,7 @@ async def complete_onboarding(
     )
     await session.execute(stmt)
 
-    user.onboarded_at = datetime.now(timezone.utc)
+    user.onboarded_at = datetime.now(UTC)
     await session.commit()
 
     cats = (

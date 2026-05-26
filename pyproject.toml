@@ -18,6 +18,7 @@ dependencies = [
     "openai>=1.55",
     "python-multipart>=0.0.12",
     "pyjwt[crypto]>=2.10",
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]
@@ -26,6 +27,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "mypy>=1.13",
+    "aiosqlite>=0.22.1",
 ]
 
 [tool.ruff]
@@ -43,3 +45,4 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]

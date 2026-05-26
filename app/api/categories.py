@@ -1,7 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, HTTPException, Response, status
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, SessionDep
@@ -29,9 +29,11 @@ async def create_category(
     session.add(cat)
     try:
         await session.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Category name already exists")
+        raise HTTPException(
+            status_code=409, detail="Category name already exists"
+        ) from exc
     await session.refresh(cat)
     return cat
 
@@ -58,8 +60,35 @@ async def update_category(
 
     try:
         await session.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Category name already exists")
+        raise HTTPException(
+            status_code=409, detail="Category name already exists"
+        ) from exc
     await session.refresh(cat)
     return cat
+
+
+@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_category(
+    category_id: UUID, user: CurrentUser, session: SessionDep
+) -> Response:
+    """Delete a category. The catch-all 'Other' category cannot be deleted."""
+    cat = (
+        await session.execute(
+            select(Category).where(
+                Category.id == category_id, Category.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if cat is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    if getattr(cat, "catalog_slug", None) == "other":
+        raise HTTPException(
+            status_code=409, detail="Cannot delete the default 'Other' category"
+        )
+
+    await session.execute(delete(Category).where(Category.id == category_id))
+    await session.commit()
+    # link_categories rows cascade-delete via FK — links themselves are unaffected
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

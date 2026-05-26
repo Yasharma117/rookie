@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -72,6 +72,6 @@ async def revoke_ingest_token(
     if row is None:
         raise HTTPException(status_code=404, detail="Ingest token not found")
     if row.revoked_at is None:
-        row.revoked_at = datetime.now(timezone.utc)
+        row.revoked_at = datetime.now(UTC)
         await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

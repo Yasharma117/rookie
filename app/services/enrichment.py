@@ -3,7 +3,9 @@
 Phase 1: runs synchronously via FastAPI BackgroundTasks. Phase 2 will move
 to an arq worker so it survives restarts and gets retries for free.
 """
-from datetime import datetime, timezone
+import logging
+import time
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
@@ -17,6 +19,9 @@ from app.schemas.enums import AssignedBy, LinkStatus
 from app.services import metadata, storage
 from app.services.catalog import description_for_slug
 from app.services.classifier import CategoryChoice, get_classifier
+
+logger = logging.getLogger(__name__)
+MAX_ENRICH_ATTEMPTS = 3
 
 
 async def _user_categories(session: AsyncSession, user_id: UUID) -> list[CategoryChoice]:
@@ -34,8 +39,11 @@ async def _user_categories(session: AsyncSession, user_id: UUID) -> list[Categor
 
 
 async def enrich_link(link_id: UUID) -> None:
+    _t0 = time.monotonic()
     async with AsyncSessionLocal() as session:
-        link = (await session.execute(select(Link).where(Link.id == link_id))).scalar_one_or_none()
+        link = (
+            await session.execute(select(Link).where(Link.id == link_id))
+        ).scalar_one_or_none()
         if link is None:
             return
 
@@ -45,7 +53,9 @@ async def enrich_link(link_id: UUID) -> None:
             headers={"User-Agent": metadata.USER_AGENT},
         ) as client:
             try:
-                meta = await metadata.fetch_metadata(link.canonical_url, link.source_platform, client)
+                meta = await metadata.fetch_metadata(
+                    link.canonical_url, link.source_platform, client
+                )
 
                 link.title = meta.title
                 link.description = meta.description
@@ -76,12 +86,20 @@ async def enrich_link(link_id: UUID) -> None:
                         assigned_by=AssignedBy.model,
                     ).on_conflict_do_nothing(index_elements=["link_id", "category_id"])
                     await session.execute(stmt)
-                # If categories is empty (user not onboarded yet) we skip
-                # classification — the link still gets enriched metadata.
 
                 link.status = LinkStatus.enriched
-                link.enriched_at = datetime.now(timezone.utc)
-            except Exception:
-                link.status = LinkStatus.failed
+                link.enriched_at = datetime.now(UTC)
+                logger.info(
+                    '"event":"enrich_ok","link_id":"%s","ms":%d',
+                    link_id, int((time.monotonic() - _t0) * 1000)
+                )
+            except Exception as exc:
+                link.enrich_attempts = (link.enrich_attempts or 0) + 1
+                logger.warning(
+                    '"event":"enrich_fail","link_id":"%s","attempt":%d,"error":"%s"',
+                    link_id, link.enrich_attempts, exc
+                )
+                if link.enrich_attempts >= MAX_ENRICH_ATTEMPTS:
+                    link.status = LinkStatus.failed
 
             await session.commit()

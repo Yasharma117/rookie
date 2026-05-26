@@ -1,0 +1,27 @@
+# Environment Variables
+.env
+.env.*
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS Specific Files
+.DS_Store
+.DS_Store?
+ehthumbs.db
+Thumbs.db
+
+# Neon CLI contexts
+.neon/
+
+# Local/IDE Configs
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file="../.env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -11,9 +11,10 @@ class Settings(BaseSettings):
     app_env: str = "local"
 
     database_url: str
-    openai_api_key: str
+    openai_api_key: str = ""       # optional — used if no gemini/openrouter key
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-flash-latest"
+    gemini_model: str = "gemini-2.0-flash"   # stable slug; was gemini-flash-latest
+    openrouter_api_key: str = ""  # optional — enables multi-model fallback via OpenRouter
 
     clerk_publishable_key: str = ""
     clerk_secret_key: str = ""
