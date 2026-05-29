@@ -14,4 +14,4 @@ jobs:
     steps:
       - name: Send HTTP Ping
         run: |
-          curl -I https://rookie-x5yh.onrender.com/health
+          curl -sf https://rookie-x5yh.onrender.com/health || echo "Ping failed"

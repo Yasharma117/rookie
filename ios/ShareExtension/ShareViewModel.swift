@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import SwiftUI
 
 enum SheetState {
     case idle
@@ -40,6 +41,7 @@ final class ShareViewModel: ObservableObject {
     @Published var noteText: String = ""
     @Published var reminderDate: Date?
     @Published var isNoteExpanded: Bool = false
+    @Published var debugError: String?
 
     private let url: URL
     private let token: String
@@ -106,12 +108,15 @@ final class ShareViewModel: ObservableObject {
 
     func beginSave() {
         state = .fetching
+        debugError = nil
         Task {
             do {
+                print("DEBUG: beginSave() calling \(api.baseURL)/v1/links with token=\(token.prefix(8))...")
                 let response = try await api.ingest(
                     IngestRequest(url: url.absoluteString),
                     token: token
                 )
+                print("DEBUG: beginSave() got response id=\(response.id) status=\(response.status)")
                 if response.isDuplicate {
                     state = .duplicate(response)
                 } else if response.status == .enriched {
@@ -119,13 +124,29 @@ final class ShareViewModel: ObservableObject {
                     autoSelectTopCategory(from: response)
                 } else {
                     state = .partial(response)
+                    startPolling(linkID: response.id)
                 }
             } catch APIError.unauthorized {
+                debugError = "401 Unauthorized (token: \(token.prefix(8))...)"
                 state = .authExpired
-            } catch APIError.networkUnavailable, APIError.timeout {
+            } catch APIError.networkUnavailable {
+                debugError = "Network unavailable"
+                state = .offline(url)
+            } catch APIError.timeout {
+                debugError = "Timed out (\(Int(AppConstants.ingestTimeout))s)"
+                state = .offline(url)
+            } catch APIError.decodingError(let inner) {
+                debugError = "Decode: \(inner.localizedDescription)"
+                state = .offline(url)
+            } catch APIError.serverError(let code) {
+                debugError = "Server \(code)"
                 state = .offline(url)
             } catch {
+                debugError = "\(error)"
                 state = .offline(url)
+            }
+            if let err = debugError {
+                print("DEBUG: beginSave() FAILED: \(err)")
             }
         }
     }
@@ -170,6 +191,38 @@ final class ShareViewModel: ObservableObject {
     private func autoSelectTopCategory(from response: IngestResponse) {
         selectedCategoryID = response.categories
             .max(by: { ($0.confidence ?? 0) < ($1.confidence ?? 0) })?.id
+    }
+
+    private func startPolling(linkID: UUID) {
+        Task {
+            var attempts = 0
+            let maxAttempts = 5
+            while attempts < maxAttempts {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                
+                guard case .partial(let currentResponse) = state, currentResponse.id == linkID else {
+                    break
+                }
+                
+                do {
+                    print("DEBUG: polling link \(linkID) (attempt \(attempts + 1))...")
+                    let updatedResponse = try await api.fetchLink(id: linkID, token: token)
+                    print("DEBUG: polled link status = \(updatedResponse.status)")
+                    
+                    if updatedResponse.status == .enriched {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            self.state = .ready(updatedResponse)
+                            self.autoSelectTopCategory(from: updatedResponse)
+                        }
+                        break
+                    }
+                } catch {
+                    print("DEBUG: polling failed: \(error)")
+                }
+                
+                attempts += 1
+            }
+        }
     }
 
     private func enqueueOffline() {

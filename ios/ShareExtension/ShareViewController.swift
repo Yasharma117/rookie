@@ -7,9 +7,22 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        view.backgroundColor = .clear
+        view.isOpaque = false
         extractURL { [weak self] url in
             DispatchQueue.main.async { self?.mount(url: url) }
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // The system wraps share extensions in container views with opaque
+        // backgrounds. Walk up the hierarchy and clear every one so our
+        // own dim layer (in the SwiftUI view) can show through.
+        var ancestor = view.superview
+        while let sv = ancestor {
+            sv.backgroundColor = .clear
+            ancestor = sv.superview
         }
     }
 
@@ -21,16 +34,16 @@ final class ShareViewController: UIViewController {
             return
         }
 
-        // TODO: gate behind real auth once Sign In with Apple ships. For now, always
-        // fall back to "dev-token" so the share sheet renders on Simulator without a
-        // signed Apple Developer Team (cross-target Keychain is unavailable in that case).
-        let token = KeychainStore.shared.ingestToken() ?? "dev-token"
+        // Fall back to "rookie_dev_api_key_123" (which we seeded in your Neon DB)
+        // so that the simulator is automatically authorized.
+        let token = KeychainStore.shared.ingestToken() ?? "rookie_dev_api_key_123"
 
         let vm = ShareViewModel(url: url, token: token)
         vm.extensionContext = extensionContext
         viewModel = vm
 
-        embed(UIHostingController(rootView: QuickSaveSheet(viewModel: vm)))
+        let hc = ClearHostingController(rootView: QuickSaveSheet(viewModel: vm))
+        embed(hc)
         vm.beginSave()
     }
 
@@ -140,3 +153,18 @@ private struct NotLinkedView: View {
 private enum ShareError: Error {
     case invalidURL
 }
+
+// MARK: - ClearHostingController
+
+final class ClearHostingController<Content: View>: UIHostingController<Content> {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        view.backgroundColor = .clear
+    }
+}
+

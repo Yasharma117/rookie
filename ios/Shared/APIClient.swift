@@ -82,6 +82,12 @@ final class APIClient {
         return try await perform(request)
     }
 
+    func fetchLink(id: UUID, token: String) async throws -> IngestResponse {
+        var request = urlRequest(path: "v1/links/\(id.uuidString.lowercased())", method: "GET")
+        request.setValue(token, forHTTPHeaderField: "X-API-Key")
+        return try await perform(request)
+    }
+
     func fetchCategories(token: String) async throws -> [Category] {
         var request = urlRequest(path: "v1/categories", method: "GET")
         request.setValue(token, forHTTPHeaderField: "X-API-Key")

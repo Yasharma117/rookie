@@ -6,6 +6,8 @@ struct QuickSaveSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
+                .contentShape(Rectangle())
+                .onTapGesture { viewModel.cancel() }
 
             VStack(spacing: 0) {
                 sheetHandle
@@ -54,6 +56,17 @@ struct QuickSaveSheet: View {
             ReminderToggle(reminderDate: $viewModel.reminderDate, noteText: viewModel.noteText)
             SheetActions(viewModel: viewModel)
                 .padding(.top, 10)
+
+            #if DEBUG
+            if let err = viewModel.debugError {
+                Text("⚠️ \(err)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.red)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            }
+            #endif
         }
     }
 
