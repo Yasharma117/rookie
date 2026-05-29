@@ -63,11 +63,17 @@ async def enrich_link(link_id: UUID) -> None:
                 link.raw_metadata = meta.raw or None
 
                 if meta.thumbnail_url:
-                    thumb = await metadata.download_thumbnail(meta.thumbnail_url, client)
-                    if thumb is not None:
-                        body, ctype = thumb
-                        link.thumbnail_s3_key = await storage.upload_thumbnail(
-                            body, ctype, str(link.id)
+                    try:
+                        thumb = await metadata.download_thumbnail(meta.thumbnail_url, client)
+                        if thumb is not None:
+                            body, ctype = thumb
+                            link.thumbnail_s3_key = await storage.upload_thumbnail(
+                                body, ctype, str(link.id)
+                            )
+                    except Exception as thumb_exc:
+                        logger.warning(
+                            '"event":"thumbnail_fail","link_id":"%s","error":"%s"',
+                            link.id, thumb_exc
                         )
 
                 categories = await _user_categories(session, link.user_id)
