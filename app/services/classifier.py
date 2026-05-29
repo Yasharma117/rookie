@@ -225,9 +225,9 @@ class OpenRouterClassifier:
     """
 
     _FALLBACK_MODELS = [
-        "google/gemini-2.0-flash-lite:free",
-        "meta-llama/llama-3-8b-instruct:free",
-        "mistralai/mistral-7b-instruct:free",
+        "google/gemini-2.5-flash",
+        "openai/gpt-4o-mini",
+        "meta-llama/llama-3.3-70b-instruct",
     ]
 
     def __init__(self, api_key: str) -> None:
