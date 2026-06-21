@@ -106,13 +106,16 @@ private final class MountChoreographer {
 struct InboxView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var choreographer = MountChoreographer()
 
     @State private var links: [IngestResponse] = []
     @State private var categories: [Category] = []
-    @State private var mode: HomeMode = .feed
     @State private var selectedCategoryID: UUID?
     @State private var searchQuery = ""
+    @State private var isSearchExpanded: Bool = false
+    @State private var isFilterStripOpen: Bool = false
+    @FocusState private var searchFocused: Bool
     @State private var activeLinkID: UUID?
     @State private var previousThumbnailURL: String?
     @State private var detailLink: IngestResponse?
@@ -143,6 +146,13 @@ struct InboxView: View {
                     homeContent
                 }
 
+                if isFilterStripOpen {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture { closeFilterStrip() }
+                }
+
                 bottomControls
                     .opacity(choreographer.affordancesIn ? 1 : 0)
                     .offset(y: choreographer.affordancesIn ? 0 : 12)
@@ -169,9 +179,11 @@ struct InboxView: View {
         .onAppear {
             choreographer.replay(reduceMotion: reduceMotion)
         }
-        .onChange(of: mode) { _, _ in
-            didSettleInitialPage = false
-            choreographer.replay(reduceMotion: reduceMotion)
+        .onChange(of: scenePhase) { _, newPhase in
+            // Refresh after returning from the share extension (or any background).
+            if newPhase == .active {
+                Task { await loadHome() }
+            }
         }
         .onChange(of: activeLinkID) { old, new in
             if let oldID = old, let oldLink = links.first(where: { $0.id == oldID }) {
@@ -194,18 +206,13 @@ struct InboxView: View {
     // MARK: - Main Content
 
     private var homeContent: some View {
-        VStack(spacing: 0) {
-            topControls
-                .padding(.top, 6)
-                .padding(.bottom, 8)
-                .opacity(choreographer.navIn ? 1 : 0)
-                .offset(y: choreographer.navIn ? 0 : -6)
-                .zIndex(2)
-
+        Group {
             if visibleLinks.isEmpty {
                 noResultsView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, 132)
+                    .padding(.bottom, 100)
+                    .id(selectedCategoryID?.uuidString ?? "all")
+                    .transition(.slideHorizontal(direction: swipeDirection, reduceMotion: reduceMotion))
             } else {
                 ZStack {
                     wheelView()
@@ -214,6 +221,9 @@ struct InboxView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .simultaneousGesture(categorySwipeGesture)
         .onChange(of: visibleIDs) { _, ids in
             guard let first = ids.first else {
                 activeLinkID = nil
@@ -228,12 +238,18 @@ struct InboxView: View {
         }
     }
 
-    private var topControls: some View {
-        CategoryFilterBar(
-            categories: categories,
-            selectedCategoryID: selectedCategoryID,
-            onSelect: selectCategory(_:)
-        )
+    /// Horizontal swipe that hops between categories. Lives at homeContent
+    /// level (not inside wheelView) so it works over the empty "Nothing here"
+    /// state too — letting the user swipe off an empty category.
+    private var categorySwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > abs(dy) * 1.5 else { return }
+                guard abs(dx) > 70 else { return }
+                cycleCategory(forward: dx < 0)
+            }
     }
 
     private func wheelView() -> some View {
@@ -245,23 +261,35 @@ struct InboxView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleLinks) { link in
                         let cardW = cardWidth(for: link, in: size)
-                        let posterAspect = posterAspectRatio(for: link)
+                        let cardH = canonicalCardHeight(in: size)
+                        let posterAspect = posterAspectRatio(for: link, in: size)
                         let isActive = link.id == activeLinkID
 
-                        HomeCard(
-                            link: link,
-                            categoryColor: color(for: link),
-                            isRippling: ripplingLinkID == link.id,
-                            rippleCenter: rippleCenter,
-                            rippleProgress: rippleProgress,
-                            pressedScale: pressedScale,
-                            cardWidth: cardW,
-                            posterAspectRatio: posterAspect,
-                            reduceMotion: reduceMotionEnabled
-                        )
+                        Group {
+                            if link.summarySegments != nil {
+                                ArticleCard(
+                                    link: link,
+                                    categoryColor: color(for: link),
+                                    cardWidth: cardW,
+                                    cardHeight: cardH
+                                )
+                            } else {
+                                HomeCard(
+                                    link: link,
+                                    categoryColor: color(for: link),
+                                    isRippling: ripplingLinkID == link.id,
+                                    rippleCenter: rippleCenter,
+                                    rippleProgress: rippleProgress,
+                                    pressedScale: pressedScale,
+                                    cardWidth: cardW,
+                                    posterAspectRatio: posterAspect,
+                                    reduceMotion: reduceMotionEnabled
+                                )
+                            }
+                        }
                         .opacity(detailLink?.id == link.id ? 0 : 1)
                         .frame(maxWidth: .infinity)
-                        .frame(height: size.height * 0.88)
+                        .frame(height: size.height * 0.74)
                         .id(link.id)
                         .scrollTransition(.interactive, axis: .vertical) { content, phase in
                             let phaseValue = reduceMotionEnabled ? 0.0 : Double(phase.value)
@@ -294,6 +322,11 @@ struct InboxView: View {
             }
             .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
             .scrollPosition(id: $activeLinkID, anchor: .center)
+            // Symmetric vertical margins let EVERY card (incl. the first/last)
+            // rest at the viewport center. Without these, the short 0.74-height
+            // cells pin to the top — the long-standing "cards pushed up" bug.
+            // Value = half the empty space the cell leaves in the viewport.
+            .contentMargins(.vertical, size.height * 0.13, for: .scrollContent)
             .refreshable { await loadHome() }
             .mask {
                 LinearGradient(
@@ -309,16 +342,6 @@ struct InboxView: View {
                     endPoint: .bottom
                 )
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 30)
-                    .onEnded { value in
-                        let dx = value.translation.width
-                        let dy = value.translation.height
-                        guard abs(dx) > abs(dy) * 1.5 else { return }
-                        guard abs(dx) > 70 else { return }
-                        cycleCategory(forward: dx < 0)
-                    }
-            )
         }
     }
 
@@ -338,20 +361,118 @@ struct InboxView: View {
     }
 
     private var bottomControls: some View {
-        VStack {
+        VStack(spacing: 12) {
             Spacer()
-            glassGroup {
-                HStack(spacing: 10) {
-                    feedButton
-                    searchField
-                    settingsButton
+
+            if isFilterStripOpen {
+                ArcCategoryScroller(
+                    categories: categories,
+                    selectedCategoryID: selectedCategoryID,
+                    onSelect: { id in
+                        selectCategory(id)
+                        closeFilterStrip()
+                    },
+                    onAdd: { addCategoryTapped() }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            HStack {
+                settingsButton
+                    .opacity(isFilterStripOpen ? 0 : 1)
+                    .allowsHitTesting(!isFilterStripOpen)
+                Spacer()
+                filterButton
+                Spacer()
+                searchControl
+                    .opacity(isFilterStripOpen ? 0 : 1)
+                    .allowsHitTesting(!isFilterStripOpen)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 22)
+        }
+        .background {
+            scrimGradient
+                .opacity(isFilterStripOpen ? 1 : 0)
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.86), value: isFilterStripOpen)
+        .animation(.spring(response: 0.4, dampingFraction: 0.86), value: selectedCategoryID)
+    }
+
+    private var filterButton: some View {
+        Button {
+            toggleFilterStrip()
+        } label: {
+            Group {
+                if isFilterStripOpen {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 50, height: 50)
+                        .contentShape(Circle().inset(by: -6))
+                        .glassyBackground(in: Circle())
+                } else if let category = selectedCategory,
+                          let color = Color(hex: category.color) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(category.name)
+                            .font(.system(size: 16, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(height: 50)
+                    .foregroundStyle(.white)
+                    .background { Capsule().fill(color) }
+                    .contentShape(Capsule().inset(by: -6))
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("All")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(height: 50)
+                    .foregroundStyle(.primary)
+                    .contentShape(Capsule().inset(by: -6))
+                    .glassyBackground(in: Capsule())
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 22)
-            .background { scrimGradient }
+            .contentTransition(.opacity)
         }
+        .buttonStyle(.plain)
+        .contentShape(Capsule().inset(by: -6))
+        .accessibilityLabel(
+            isFilterStripOpen
+                ? "Close filters"
+                : (selectedCategory.map { "Filtered by \($0.name). Open filters." } ?? "Open filters")
+        )
+    }
+
+    private func toggleFilterStrip() {
+        if !reduceMotion {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        }
+        if isSearchExpanded { collapseSearch() }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            isFilterStripOpen.toggle()
+        }
+    }
+
+    private func closeFilterStrip() {
+        guard isFilterStripOpen else { return }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            isFilterStripOpen = false
+        }
+    }
+
+    private func addCategoryTapped() {
+        if !reduceMotion {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        }
+        // TODO: wire to a category-creation sheet when the flow exists.
     }
 
     @ViewBuilder
@@ -363,51 +484,73 @@ struct InboxView: View {
         }
     }
 
-    private var feedButton: some View {
-        Button {
-            toggleMode()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: mode == .feed ? "tray.full" : "sparkles")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(mode.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 14)
-            .frame(minWidth: 110, maxWidth: 130)
-            .frame(height: 50)
-            .foregroundStyle(.primary)
-            .glassyBackground(in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Switch to \(mode == .feed ? "Recommendations" : "Feed")")
-    }
-
-    private var searchField: some View {
+    private var searchControl: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary)
-            TextField("Search saves", text: $searchQuery)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-            if !searchQuery.isEmpty {
-                Button {
-                    searchQuery = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                .foregroundStyle(isSearchExpanded ? .secondary : .primary)
+
+            if isSearchExpanded {
+                TextField("Search saves", text: $searchQuery)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .focused($searchFocused)
+                    .transition(.opacity)
+
+                if !searchQuery.isEmpty {
+                    Button {
+                        searchQuery = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel("Clear search")
+                    .transition(.scale.combined(with: .opacity))
+                } else {
+                    Button {
+                        collapseSearch()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 22)
+                    }
+                    .accessibilityLabel("Close search")
+                    .transition(.opacity)
                 }
-                .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
-        .frame(height: 50)
+        .padding(.horizontal, isSearchExpanded ? 18 : 0)
+        .frame(width: isSearchExpanded ? nil : 50, height: 50)
+        .frame(maxWidth: isSearchExpanded ? .infinity : 50)
         .glassyBackground(in: Capsule())
+        .contentShape(Capsule())
+        .onTapGesture {
+            if !isSearchExpanded {
+                expandSearch()
+            }
+        }
+        .accessibilityLabel(isSearchExpanded ? "Search saves" : "Open search")
+    }
+
+    private func expandSearch() {
+        if isFilterStripOpen { closeFilterStrip() }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            isSearchExpanded = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            searchFocused = true
+        }
+    }
+
+    private func collapseSearch() {
+        searchFocused = false
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            searchQuery = ""
+            isSearchExpanded = false
+        }
     }
 
     private var settingsButton: some View {
@@ -419,25 +562,25 @@ struct InboxView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 50, height: 50)
+                .contentShape(Circle().inset(by: -6))
                 .glassyBackground(in: Circle())
         }
         .buttonStyle(.plain)
+        .contentShape(Circle().inset(by: -6))
         .accessibilityLabel("Settings")
     }
 
     private var scrimGradient: some View {
         LinearGradient(
-            colors: [.clear, Color(.systemBackground).opacity(0.84), Color(.systemBackground)],
+            stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: Color(.systemBackground).opacity(0.18), location: 0.55),
+                .init(color: Color(.systemBackground).opacity(0.38), location: 1.0)
+            ],
             startPoint: .top,
             endPoint: .bottom
         )
         .ignoresSafeArea(edges: .bottom)
-    }
-
-    private func toggleMode() {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            mode = mode == .feed ? .recommendations : .feed
-        }
     }
 
     private func selectCategory(_ id: UUID?) {
@@ -475,10 +618,6 @@ struct InboxView: View {
 
     private var loadingView: some View {
         VStack(spacing: 18) {
-            topControls
-                .redacted(reason: .placeholder)
-                .allowsHitTesting(false)
-
             Spacer()
 
             ZStack {
@@ -495,7 +634,7 @@ struct InboxView: View {
 
             Spacer()
         }
-        .padding(.bottom, 132)
+        .padding(.bottom, 100)
     }
 
     private var emptyView: some View {
@@ -592,7 +731,7 @@ struct InboxView: View {
     // MARK: - Data
 
     private var visibleLinks: [IngestResponse] {
-        let source = mode == .feed ? links : recommendedLinks
+        let source = links
         let categoryFiltered = source.filter { link in
             guard let selectedCategoryID else { return true }
             return link.categories.contains { $0.id == selectedCategoryID }
@@ -613,12 +752,6 @@ struct InboxView: View {
         }
     }
 
-    private var recommendedLinks: [IngestResponse] {
-        links.sorted { lhs, rhs in
-            recommendationScore(lhs) > recommendationScore(rhs)
-        }
-    }
-
     private var visibleIDs: [UUID] {
         visibleLinks.map(\.id)
     }
@@ -630,17 +763,18 @@ struct InboxView: View {
         return visibleLinks.first
     }
 
+    private var selectedCategory: Category? {
+        guard let id = selectedCategoryID else { return nil }
+        return categories.first(where: { $0.id == id })
+    }
+
     private func loadHome() async {
-        guard let token = KeychainStore.shared.ingestToken() else {
+        guard let token = KeychainStore.shared.effectiveIngestToken() else {
             #if DEBUG
             loadDemoContentIfNeeded()
             #endif
             return
         }
-
-        #if DEBUG
-        loadDemoContentIfNeeded()
-        #endif
 
         isLoading = true
         defer { isLoading = false }
@@ -649,13 +783,6 @@ struct InboxView: View {
             async let fetchedCategories = try? APIClient.shared.fetchCategories(token: token)
             let loadedLinks = try await fetchedLinks
             let loadedCategories = await fetchedCategories ?? inferredCategories(from: loadedLinks)
-
-            #if DEBUG
-            guard !loadedLinks.isEmpty else {
-                loadDemoContentIfNeeded(force: true)
-                return
-            }
-            #endif
 
             links = loadedLinks
             categories = loadedCategories
@@ -692,14 +819,6 @@ struct InboxView: View {
             }
     }
 
-    private func recommendationScore(_ link: IngestResponse) -> Double {
-        let confidence = link.categories.compactMap(\.confidence).max() ?? 0
-        let recency = max(0, 1 - Date().timeIntervalSince(link.ingestedAt) / 604_800)
-        let enriched = link.status == .enriched ? 0.25 : 0
-        let thumbnail = link.thumbnailURL == nil ? 0 : 0.15
-        return confidence + recency + enriched + thumbnail
-    }
-
     private func color(for link: IngestResponse?) -> Color {
         guard let link else { return Color(.systemGray5) }
         if let ref = link.categories.first,
@@ -723,20 +842,30 @@ struct InboxView: View {
         color(for: Optional(link))
     }
 
+    // Standardized sizing — every card (HomeCard or ArticleCard) gets the
+    // same width and the same overall height, so the wheel reads as one
+    // consistent stack regardless of source platform or content type.
     private func cardWidth(for link: IngestResponse, in size: CGSize) -> CGFloat {
-        let widthRatio: CGFloat = isVideoFirst(link) ? 0.86 : 0.90
-        let maxWidth: CGFloat = isVideoFirst(link) ? 352 : 372
-        return min(maxWidth, max(318, size.width * widthRatio))
+        min(348, max(318, size.width * 0.88))
     }
 
     private func cardHeight(for link: IngestResponse, in size: CGSize) -> CGFloat {
-        let posterHeight = cardWidth(for: link, in: size) / posterAspectRatio(for: link)
-        let metadataHeight: CGFloat = isVideoFirst(link) ? 46 : 68
-        return posterHeight + metadataHeight
+        canonicalCardHeight(in: size)
     }
 
-    private func posterAspectRatio(for link: IngestResponse) -> CGFloat {
-        isVideoFirst(link) ? 0.62 : 0.78
+    /// Single source of truth for the card-content box height across types.
+    /// Capped well below the wheel-cell slot so the top of the card never
+    /// runs into the scroll mask gradient.
+    private func canonicalCardHeight(in size: CGSize) -> CGFloat {
+        min(560, size.height * 0.66)
+    }
+
+    private func posterAspectRatio(for link: IngestResponse, in size: CGSize) -> CGFloat {
+        // Width / posterHeight where posterHeight = canonicalCardHeight - metadata block.
+        // Derived so the entire HomeCard (poster + metadata) fills exactly canonicalCardHeight.
+        let w = cardWidth(for: link, in: size)
+        let h = max(1, canonicalCardHeight(in: size) - 68)
+        return w / h
     }
 
     private func isVideoFirst(_ link: IngestResponse) -> Bool {
@@ -793,39 +922,25 @@ struct InboxView: View {
     }
 }
 
-// MARK: - Mode
+// MARK: - Arc Category Scroller
+//
+// Horizontal chip strip with edge falloff: chips sink and fade as they
+// approach the scrollview edges. The arc tracks live scroll position via
+// .visualEffect + GeometryProxy.bounds(of: .scrollView).
+//
+// Future: this is where a context-sensitive command-strip morph could slot
+// in — same container, different chip content depending on scroll context.
 
-private enum HomeMode: String, CaseIterable, Identifiable {
-    case feed
-    case recommendations
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .feed: return "Feed"
-        case .recommendations: return "Recommendations"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .feed: return "Feed"
-        case .recommendations: return "For you"
-        }
-    }
-}
-
-// MARK: - Category Bar
-
-private struct CategoryFilterBar: View {
+private struct ArcCategoryScroller: View {
     let categories: [Category]
     let selectedCategoryID: UUID?
     let onSelect: (UUID?) -> Void
+    let onAdd: () -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 18) {
+                addChip
                 chip(title: "All", color: .primary, isSelected: selectedCategoryID == nil) {
                     onSelect(nil)
                 }
@@ -840,23 +955,75 @@ private struct CategoryFilterBar: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 56)
+            .padding(.vertical, 16)
+        }
+        .frame(height: 92)
+        .mask {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: .black, location: 0.10),
+                    .init(color: .black, location: 0.90),
+                    .init(color: .clear, location: 1.0)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
         }
         .accessibilityElement(children: .contain)
     }
 
+    private var addChip: some View {
+        Button(action: onAdd) {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 52, height: 52)
+                .background {
+                    Circle()
+                        .fill(Color(.systemBackground).opacity(0.72))
+                }
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .visualEffect { content, proxy in
+            let chipFrame = proxy.frame(in: .scrollView(axis: .horizontal))
+            let scrollWidth = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? 1
+            let chipCenter = chipFrame.midX
+            let viewportCenter = scrollWidth / 2
+            let halfWidth = max(scrollWidth / 2, 1)
+            let normalized = min(1, max(0, abs(chipCenter - viewportCenter) / halfWidth))
+            let curve = normalized * normalized
+            return content
+                .offset(y: curve * 28)
+                .scaleEffect(1 - curve * 0.18, anchor: .top)
+                .opacity(1 - curve * 0.7)
+        }
+        .accessibilityLabel("Add category")
+    }
+
+    @ViewBuilder
     private func chip(title: String, color: Color, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline.weight(isSelected ? .semibold : .medium))
+                .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
                 .lineLimit(1)
-                .padding(.horizontal, 15)
-                .frame(height: 36)
+                .padding(.horizontal, 24)
+                .frame(height: 52)
                 .foregroundStyle(isSelected ? .white : .primary)
                 .background {
                     Capsule()
                         .fill(isSelected ? color : Color(.systemBackground).opacity(0.72))
+                        .animation(
+                            isSelected
+                                ? .timingCurve(0.16, 1, 0.3, 1, duration: 0.20)
+                                : .easeIn(duration: 0.15),
+                            value: isSelected
+                        )
                 }
                 .overlay {
                     Capsule()
@@ -864,6 +1031,20 @@ private struct CategoryFilterBar: View {
                 }
         }
         .buttonStyle(.plain)
+        .visualEffect { content, proxy in
+            let chipFrame = proxy.frame(in: .scrollView(axis: .horizontal))
+            let scrollWidth = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? 1
+            let chipCenter = chipFrame.midX
+            let viewportCenter = scrollWidth / 2
+            let halfWidth = max(scrollWidth / 2, 1)
+            let normalized = min(1, max(0, abs(chipCenter - viewportCenter) / halfWidth))
+            // Quadratic falloff: nearly flat at center, dramatic dip at edges.
+            let curve = normalized * normalized
+            return content
+                .offset(y: curve * 28)
+                .scaleEffect(1 - curve * 0.18, anchor: .top)
+                .opacity(1 - curve * 0.7)
+        }
         .accessibilityLabel(title == "All" ? "All categories" : "\(title) category")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -1127,7 +1308,8 @@ private enum HomeDemoContent {
             thumbnailURL: nil,
             ingestedAt: date,
             enrichedAt: date,
-            categories: [category]
+            categories: [category],
+            summarySegments: nil
         )
     }
 }

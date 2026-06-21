@@ -88,6 +88,16 @@ final class APIClient {
         return try await perform(request)
     }
 
+    @discardableResult
+    func resummarizeLink(id: UUID, token: String) async throws -> IngestResponse {
+        var request = urlRequest(
+            path: "v1/links/\(id.uuidString.lowercased())/resummarize",
+            method: "POST"
+        )
+        request.setValue(token, forHTTPHeaderField: "X-API-Key")
+        return try await perform(request)
+    }
+
     func fetchCategories(token: String) async throws -> [Category] {
         var request = urlRequest(path: "v1/categories", method: "GET")
         request.setValue(token, forHTTPHeaderField: "X-API-Key")
@@ -104,7 +114,18 @@ final class APIClient {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-API-Key")
-        return try await perform(request)
+        let envelope: LinkListResponse = try await perform(request)
+        return envelope.items
+    }
+
+    private struct LinkListResponse: Decodable {
+        let items: [IngestResponse]
+        let nextCursor: String?
+
+        enum CodingKeys: String, CodingKey {
+            case items
+            case nextCursor = "next_cursor"
+        }
     }
 
     func mintIngestToken(appleJWT: String) async throws -> String {

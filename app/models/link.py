@@ -36,6 +36,7 @@ class Link(Base):
     author: Mapped[str | None] = mapped_column(String(256), nullable=True)
     thumbnail_s3_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     raw_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    summary_segments: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     status: Mapped[LinkStatus] = mapped_column(
         Enum(LinkStatus, name="link_status_enum"),

@@ -25,6 +25,19 @@ final class KeychainStore {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Returns the stored ingest token, or the dev API key as a DEBUG-only
+    /// fallback so the simulator can talk to the local backend without
+    /// completing the sign-in flow. In RELEASE this is identical to
+    /// `ingestToken()`.
+    func effectiveIngestToken() -> String? {
+        if let token = ingestToken() { return token }
+        #if DEBUG
+        return "rookie_dev_api_key_123"
+        #else
+        return nil
+        #endif
+    }
+
     func setIngestToken(_ token: String) {
         guard let data = token.data(using: .utf8) else { return }
         let query: [CFString: Any] = [

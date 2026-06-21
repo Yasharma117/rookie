@@ -6,6 +6,7 @@ Changes from v0:
 - slowapi rate limiting on write endpoints
 """
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -23,7 +24,7 @@ from app.api import ingest_tokens as ingest_tokens_api
 from app.api import links as links_api
 from app.api import onboarding as onboarding_api
 from app.config import settings
-from app.db import AsyncSessionLocal
+from app.db import AsyncSessionLocal, heartbeat, warm_pool
 from app.models import Link
 from app.schemas.enums import LinkStatus
 from app.services.enrichment import MAX_ENRICH_ATTEMPTS, enrich_link
@@ -64,8 +65,17 @@ async def _drain_stale_pending() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Warm the DB pool first so the first request isn't a multi-second cold
+    # connect, then keep it warm (and Neon awake) with a background heartbeat.
+    await warm_pool()
+    hb_task = asyncio.create_task(heartbeat())
     await _drain_stale_pending()
-    yield
+    try:
+        yield
+    finally:
+        hb_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await hb_task
 
 
 # ---------------------------------------------------------------------------
