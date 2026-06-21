@@ -1,6 +1,6 @@
 import Foundation
 
-struct IngestResponse: Decodable, Identifiable, Hashable {
+struct IngestResponse: Codable, Identifiable, Hashable {
     let id: UUID
     let sourceURL: String
     let canonicalURL: String
@@ -41,7 +41,7 @@ struct IngestResponse: Decodable, Identifiable, Hashable {
     }
 }
 
-struct CategoryRef: Decodable, Identifiable, Hashable {
+struct CategoryRef: Codable, Identifiable, Hashable {
     let id: UUID
     let name: String
     let confidence: Double?
@@ -49,16 +49,16 @@ struct CategoryRef: Decodable, Identifiable, Hashable {
 
 /// One segment of the structured article-summary sentence.
 /// `emphasis` is nil for connective grammar, or 1/2/3 for the load-bearing key phrases.
-struct SummarySegment: Decodable, Hashable {
+struct SummarySegment: Codable, Hashable {
     let text: String
     let emphasis: Int?
 }
 
-enum LinkStatus: String, Decodable, Hashable {
+enum LinkStatus: String, Codable, Hashable {
     case pending, enriched, failed
 }
 
-enum SourcePlatform: String, Decodable, Hashable {
+enum SourcePlatform: String, Codable, Hashable {
     case instagram, linkedin, youtube, x, tiktok, vimeo, reddit, web
 
     var sfSymbol: String {

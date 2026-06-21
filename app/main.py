@@ -65,17 +65,23 @@ async def _drain_stale_pending() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm the DB pool first so the first request isn't a multi-second cold
-    # connect, then keep it warm (and Neon awake) with a background heartbeat.
+    # Warm the DB pool so the first request isn't a multi-second cold connect.
     await warm_pool()
-    hb_task = asyncio.create_task(heartbeat())
+
+    # The keep-warm heartbeat is opt-in: it defeats Neon autosuspend but burns
+    # the free-tier compute budget. Off by default (free plan); enable only on a
+    # paid/always-on DB. The iOS cache hides cold-start latency regardless.
+    hb_task = asyncio.create_task(heartbeat()) if settings.db_heartbeat_enabled else None
+
     await _drain_stale_pending()
     try:
         yield
     finally:
-        hb_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await hb_task
+        if hb_task is not None:
+            hb_task.cancel()
+            # Bounded so a heartbeat stuck on a dead socket can't hang shutdown.
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(hb_task, timeout=5)
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ from datetime import datetime
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
 
@@ -24,6 +24,7 @@ from app.schemas.enums import AssignedBy, LinkStatus, SourcePlatform
 from app.schemas.link import CategoryRef, LinkCreate, LinkListOut, LinkOut, LinkUpdate
 from app.services import article_body, metadata, storage
 from app.services.enrichment import enrich_link
+from app.services.http_cache import conditional_json
 from app.services.summarizer import get_summarizer
 from app.services.url_normalizer import detect_platform, normalize_url
 
@@ -154,6 +155,7 @@ async def create_link(
 
 @router.get("", response_model=LinkListOut)
 async def list_links(
+    request: Request,
     user: CurrentUser,
     session: SessionDep,
     limit: int = 50,
@@ -166,7 +168,7 @@ async def list_links(
     status: LinkStatus | None = None,
     platform: SourcePlatform | None = None,
     q: str | None = None,
-) -> LinkListOut:
+) -> Response:
     """
     Returns a paginated list of links. Supports optional filters and cursor-based pagination.
 
@@ -218,7 +220,8 @@ async def list_links(
         if len(rows) == safe_limit
         else None
     )
-    return LinkListOut(items=items, next_cursor=next_cursor)
+    out = LinkListOut(items=items, next_cursor=next_cursor)
+    return conditional_json(request, out.model_dump(mode="json"))
 
 
 # ---------------------------------------------------------------------------

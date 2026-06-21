@@ -13,9 +13,11 @@
 		0A83FAC8CF929602A2B54C39 /* ShareViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51155B8F4C48601A2EE4733F /* ShareViewModel.swift */; };
 		104CB535E51612FA10674906 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495C59F543C87286C3B37F75 /* ShareViewController.swift */; };
 		121DA05E10B66DCC6B98C9DA /* NoteField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E1C2379C13B93D4FD446F1 /* NoteField.swift */; };
+		14E347C7D86064226113288D /* LocalCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C145547E326508AD55A5B64D /* LocalCache.swift */; };
 		2049684CE43963766FA42256 /* IngestResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C765F40766B322B0681FB8D /* IngestResponse.swift */; };
 		32F2BC9BCFD889786EDA4A9D /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EBF4E08F69C8AF8949497E /* WelcomeView.swift */; };
 		3DD935CE6E5C59581D2F20CB /* LinkSaverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F7AA2776CD32FA4707DE431 /* LinkSaverApp.swift */; };
+		3F0AA3F564CBB912514927F9 /* LocalCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C145547E326508AD55A5B64D /* LocalCache.swift */; };
 		42F42ECD489DE74071FC163A /* CategoryChipRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98961FDD0079997DC800376 /* CategoryChipRow.swift */; };
 		4A5877565D5F884805C4A057 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF17FBC65784642692E7046 /* DevicesView.swift */; };
 		4BF0215F31069194E6F836D0 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4787500FE9DB99B9D048776 /* KeychainStore.swift */; };
@@ -104,6 +106,7 @@
 		B3E1C2379C13B93D4FD446F1 /* NoteField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteField.swift; sourceTree = "<group>"; };
 		B4787500FE9DB99B9D048776 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		B47B64BD3BBB1638B10CBED7 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		C145547E326508AD55A5B64D /* LocalCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCache.swift; sourceTree = "<group>"; };
 		D2901361B2963E34837752F8 /* LinkSaver.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LinkSaver.entitlements; sourceTree = "<group>"; };
 		D98961FDD0079997DC800376 /* CategoryChipRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryChipRow.swift; sourceTree = "<group>"; };
 		DAD1EA46E36EAFD964E8AA20 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
@@ -151,6 +154,7 @@
 				B47B64BD3BBB1638B10CBED7 /* APIClient.swift */,
 				22E1A109F6901FFD661CC776 /* Constants.swift */,
 				B4787500FE9DB99B9D048776 /* KeychainStore.swift */,
+				C145547E326508AD55A5B64D /* LocalCache.swift */,
 				61C2865E8EE1FFC098B3915A /* OfflineQueue.swift */,
 				9DCE619D404FA4774FFB6DC4 /* Models */,
 			);
@@ -326,6 +330,7 @@
 				EDB4BC709564874954762F3C /* LinkCard.swift in Sources */,
 				EF0FCCDFA231032A3FC6AAED /* LinkDetailView.swift in Sources */,
 				3DD935CE6E5C59581D2F20CB /* LinkSaverApp.swift in Sources */,
+				14E347C7D86064226113288D /* LocalCache.swift in Sources */,
 				0492299D07B6498ACAF182DC /* NoteField.swift in Sources */,
 				94CC5D001AA280E41B23B374 /* OfflineQueue.swift in Sources */,
 				5F9D5990C530083CAEB17F8F /* QueuedSave.swift in Sources */,
@@ -352,6 +357,7 @@
 				71DA2FC835ACA02921835301 /* IngestTokenOut.swift in Sources */,
 				4BF0215F31069194E6F836D0 /* KeychainStore.swift in Sources */,
 				7FC3451E00A884874E654176 /* LinkCard.swift in Sources */,
+				3F0AA3F564CBB912514927F9 /* LocalCache.swift in Sources */,
 				121DA05E10B66DCC6B98C9DA /* NoteField.swift in Sources */,
 				B73BCC40C6A53760D23B3D6D /* OfflineQueue.swift in Sources */,
 				735E40B3CCFBF8C5C8A15687 /* QueuedSave.swift in Sources */,

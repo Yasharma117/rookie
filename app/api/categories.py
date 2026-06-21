@@ -1,24 +1,28 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, SessionDep
 from app.models import Category
 from app.schemas.category import CategoryCreate, CategoryOut, CategoryUpdate
+from app.services.http_cache import conditional_json
 
 router = APIRouter(prefix="/v1/categories", tags=["categories"])
 
 
 @router.get("", response_model=list[CategoryOut])
-async def list_categories(user: CurrentUser, session: SessionDep) -> list[Category]:
+async def list_categories(
+    request: Request, user: CurrentUser, session: SessionDep
+) -> Response:
     rows = (
         await session.execute(
             select(Category).where(Category.user_id == user.id).order_by(Category.name)
         )
     ).scalars().all()
-    return list(rows)
+    payload = [CategoryOut.model_validate(c).model_dump(mode="json") for c in rows]
+    return conditional_json(request, payload)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=CategoryOut)

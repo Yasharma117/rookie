@@ -30,5 +30,12 @@ class Settings(BaseSettings):
     dev_user_api_key: str
     dev_user_id: str
 
+    # Keep the DB compute awake with a periodic ping. Defeats Neon autosuspend
+    # (avoids cold-start spikes) but BURNS the free-tier compute-hour budget
+    # continuously. Leave OFF on the free plan; turn ON only with a paid /
+    # always-on database. The iOS client cache already hides cold-start latency,
+    # so off-by-default costs the user nothing they perceive.
+    db_heartbeat_enabled: bool = False
+
 
 settings = Settings()

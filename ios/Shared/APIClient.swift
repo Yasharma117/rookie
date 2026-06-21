@@ -98,12 +98,26 @@ final class APIClient {
         return try await perform(request)
     }
 
+    /// Categories with ETag/304 + local cache. On 304 (or when the body is
+    /// unchanged) returns the cached categories; otherwise decodes, refreshes
+    /// the cache, and stores the new ETag.
     func fetchCategories(token: String) async throws -> [Category] {
         var request = urlRequest(path: "v1/categories", method: "GET")
         request.setValue(token, forHTTPHeaderField: "X-API-Key")
-        return try await perform(request)
+        if let etag = LocalCache.etag(for: "categories") {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        let (data, http) = try await rawData(request)
+        if http.statusCode == 304 { return LocalCache.loadCategories() }
+        do {
+            let categories = try decoder.decode([Category].self, from: data)
+            LocalCache.setEtag(http.value(forHTTPHeaderField: "ETag"), for: "categories")
+            LocalCache.saveCategories(categories)
+            return categories
+        } catch { throw APIError.decodingError(error) }
     }
 
+    /// Links with ETag/304 + local cache (stale-while-revalidate source).
     func fetchLinks(token: String, limit: Int = 50, offset: Int = 0) async throws -> [IngestResponse] {
         var comps = URLComponents(url: baseURL.appendingPathComponent("v1/links"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -114,8 +128,17 @@ final class APIClient {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-API-Key")
-        let envelope: LinkListResponse = try await perform(request)
-        return envelope.items
+        if let etag = LocalCache.etag(for: "links") {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        let (data, http) = try await rawData(request)
+        if http.statusCode == 304 { return LocalCache.loadLinks() }
+        do {
+            let envelope = try decoder.decode(LinkListResponse.self, from: data)
+            LocalCache.setEtag(http.value(forHTTPHeaderField: "ETag"), for: "links")
+            LocalCache.saveLinks(envelope.items)
+            return envelope.items
+        } catch { throw APIError.decodingError(error) }
     }
 
     private struct LinkListResponse: Decodable {
@@ -171,6 +194,31 @@ final class APIClient {
         r.httpMethod = method
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return r
+    }
+
+    /// Like `perform` but returns the raw bytes + HTTP response without decoding,
+    /// and treats 304 as a success so callers can fall back to their local cache.
+    private func rawData(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw APIError.networkUnavailable }
+            switch http.statusCode {
+            case 200...299, 304: return (data, http)
+            case 401: throw APIError.unauthorized
+            default: throw APIError.serverError(http.statusCode)
+            }
+        } catch let error as APIError {
+            throw error
+        } catch let error as URLError {
+            switch error.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost:
+                throw APIError.networkUnavailable
+            case .timedOut:
+                throw APIError.timeout
+            default:
+                throw APIError.networkUnavailable
+            }
+        }
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {

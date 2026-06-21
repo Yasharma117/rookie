@@ -776,7 +776,24 @@ struct InboxView: View {
             return
         }
 
-        isLoading = true
+        // Stale-while-revalidate: paint the cached library immediately so the
+        // user never waits on the network. Only show the loading shimmer on a
+        // true cold start (empty cache). The fetch below reconciles in place.
+        let hadCache = !links.isEmpty
+        if !hadCache {
+            let cachedLinks = LocalCache.loadLinks()
+            if !cachedLinks.isEmpty {
+                let cachedCats = LocalCache.loadCategories()
+                links = cachedLinks
+                categories = cachedCats.isEmpty
+                    ? inferredCategories(from: cachedLinks)
+                    : cachedCats
+                if activeLinkID == nil { activeLinkID = links.first?.id }
+            }
+        }
+
+        let showSpinner = links.isEmpty
+        if showSpinner { isLoading = true }
         defer { isLoading = false }
         do {
             async let fetchedLinks = APIClient.shared.fetchLinks(token: token)
@@ -786,13 +803,14 @@ struct InboxView: View {
 
             links = loadedLinks
             categories = loadedCategories
-            if activeLinkID == nil {
+            if activeLinkID == nil || !links.contains(where: { $0.id == activeLinkID }) {
                 activeLinkID = links.first?.id
             }
         } catch {
+            // Network failed — keep whatever cache we already painted.
             errorMessage = error.localizedDescription
             #if DEBUG
-            loadDemoContentIfNeeded(force: true)
+            if links.isEmpty { loadDemoContentIfNeeded(force: true) }
             #endif
         }
     }
