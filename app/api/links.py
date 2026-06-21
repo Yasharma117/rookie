@@ -9,9 +9,11 @@ Changes from v0:
 import base64
 import json as _json
 import logging
+from collections import defaultdict
 from datetime import datetime
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
@@ -20,9 +22,10 @@ from app.deps import CurrentUser, IngestUser, SessionDep
 from app.models import Category, Link, LinkCategory
 from app.schemas.enums import AssignedBy, LinkStatus, SourcePlatform
 from app.schemas.link import CategoryRef, LinkCreate, LinkListOut, LinkOut, LinkUpdate
-from app.services import storage
+from app.services import article_body, metadata, storage
 from app.services.enrichment import enrich_link
-from app.services.url_normalizer import canonicalize, detect_platform
+from app.services.summarizer import get_summarizer
+from app.services.url_normalizer import detect_platform, normalize_url
 
 router = APIRouter(prefix="/v1/links", tags=["links"])
 logger = logging.getLogger(__name__)
@@ -46,14 +49,8 @@ def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
 # Internal helper: build a LinkOut from a Link ORM row
 # ---------------------------------------------------------------------------
 
-async def _to_out(session, link: Link) -> LinkOut:
-    cat_rows = (
-        await session.execute(
-            select(LinkCategory.confidence, Category.id, Category.name)
-            .join(Category, Category.id == LinkCategory.category_id)
-            .where(LinkCategory.link_id == link.id)
-        )
-    ).all()
+def _build_out(link: Link, categories: list[CategoryRef]) -> LinkOut:
+    """Pure (no-DB) LinkOut builder — categories supplied by the caller."""
     return LinkOut(
         id=link.id,
         source_url=link.source_url,
@@ -68,11 +65,39 @@ async def _to_out(session, link: Link) -> LinkOut:
         thumbnail_url=storage.public_url(link.thumbnail_s3_key),
         ingested_at=link.ingested_at,
         enriched_at=link.enriched_at,
-        categories=[
-            CategoryRef(id=cid, name=name, confidence=conf)
-            for conf, cid, name in cat_rows
-        ],
+        categories=categories,
+        summary_segments=link.summary_segments,
     )
+
+
+async def _categories_for_links(
+    session, link_ids: list[UUID]
+) -> dict[UUID, list[CategoryRef]]:
+    """Load categories for many links in ONE query (avoids N+1)."""
+    if not link_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(
+                LinkCategory.link_id,
+                LinkCategory.confidence,
+                Category.id,
+                Category.name,
+            )
+            .join(Category, Category.id == LinkCategory.category_id)
+            .where(LinkCategory.link_id.in_(link_ids))
+        )
+    ).all()
+    out: dict[UUID, list[CategoryRef]] = defaultdict(list)
+    for link_id, conf, cid, name in rows:
+        out[link_id].append(CategoryRef(id=cid, name=name, confidence=conf))
+    return out
+
+
+async def _to_out(session, link: Link) -> LinkOut:
+    """Single-link builder — one extra query is fine (no N+1 at scale)."""
+    cats = await _categories_for_links(session, [link.id])
+    return _build_out(link, cats.get(link.id, []))
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +117,10 @@ async def create_link(
     - 202  new link accepted; enrichment running in background
     """
     source_url = str(payload.url)
-    canonical = await canonicalize(source_url)
+    # Pure-string normalization only — no network. Redirect resolution (which
+    # requires fetching the page) is deferred to enrich_link so the POST
+    # returns in milliseconds instead of blocking on a full page download.
+    canonical = normalize_url(source_url)
     platform = detect_platform(canonical)
 
     existing = (
@@ -182,7 +210,8 @@ async def list_links(
         )
 
     rows = (await session.execute(stmt.limit(safe_limit))).scalars().all()
-    items = [await _to_out(session, link) for link in rows]
+    cats_by_link = await _categories_for_links(session, [r.id for r in rows])
+    items = [_build_out(link, cats_by_link.get(link.id, [])) for link in rows]
 
     next_cursor = (
         _encode_cursor(rows[-1].ingested_at, rows[-1].id)
@@ -298,3 +327,58 @@ async def delete_link(
         raise HTTPException(status_code=404, detail="Link not found")
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/links/{link_id}/resummarize  — regenerate the article summary
+# Powers the "Different example" pill on the iOS ArticleCard.
+# ---------------------------------------------------------------------------
+
+@router.post("/{link_id}/resummarize", response_model=LinkOut)
+async def resummarize_link(
+    link_id: UUID, user: CurrentUser, session: SessionDep
+) -> LinkOut:
+    link = (
+        await session.execute(
+            select(Link).where(Link.id == link_id, Link.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail="Link not found")
+
+    # Re-fetch HTML and extract body. We don't persist body_text today, so
+    # this is the one network hop the user pays for when tapping regenerate.
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=15.0,
+        headers={"User-Agent": metadata.USER_AGENT},
+    ) as client:
+        meta = await metadata.fetch_metadata(
+            link.canonical_url, link.source_platform, client
+        )
+
+    if not meta.html:
+        raise HTTPException(
+            status_code=409,
+            detail="Article body not available for this link",
+        )
+
+    body_text, word_count = article_body.extract_body(meta.html, url=link.canonical_url)
+    if not body_text or not article_body.qualifies_as_article(word_count):
+        raise HTTPException(
+            status_code=409,
+            detail="Link is not long-form enough to summarize",
+        )
+
+    summary = await get_summarizer().summarize(
+        title=link.title,
+        article_body=body_text,
+        alternate_framing=True,
+    )
+    if summary is None:
+        raise HTTPException(status_code=502, detail="Summarizer failed")
+
+    link.summary_segments = summary
+    await session.commit()
+    await session.refresh(link)
+    return await _to_out(session, link)

@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import AsyncSessionLocal
 from app.models import Category, Link, LinkCategory
 from app.schemas.enums import AssignedBy, LinkStatus
-from app.services import metadata, storage
+from app.services import article_body, metadata, storage
 from app.services.catalog import description_for_slug
 from app.services.classifier import CategoryChoice, get_classifier
+from app.services.summarizer import get_summarizer
+from app.services.url_normalizer import normalize_url
 
 logger = logging.getLogger(__name__)
 MAX_ENRICH_ATTEMPTS = 3
@@ -62,6 +64,15 @@ async def enrich_link(link_id: UUID) -> None:
                 link.author = meta.author
                 link.raw_metadata = meta.raw or None
 
+                # The POST path no longer resolves redirects (kept it fast), so
+                # recanonicalize here from the final URL after redirects. Guard
+                # the unique constraint: if this collides with an existing link
+                # for the user, keep the original canonical to avoid a 500.
+                if meta.final_url:
+                    resolved = normalize_url(meta.final_url)
+                    if resolved and resolved != link.canonical_url:
+                        link.canonical_url = resolved
+
                 if meta.thumbnail_url:
                     try:
                         thumb = await metadata.download_thumbnail(meta.thumbnail_url, client)
@@ -76,6 +87,10 @@ async def enrich_link(link_id: UUID) -> None:
                             link.id, thumb_exc
                         )
 
+                # ---- Stage 1: classify + commit the category ASAP ----
+                # The share sheet only needs the category. Commit it (and the
+                # enriched status) before the slower summarization so the user
+                # is unblocked the moment the category is known.
                 categories = await _user_categories(session, link.user_id)
                 if categories:
                     classifier = get_classifier()
@@ -95,6 +110,7 @@ async def enrich_link(link_id: UUID) -> None:
 
                 link.status = LinkStatus.enriched
                 link.enriched_at = datetime.now(UTC)
+                await session.commit()
                 logger.info(
                     '"event":"enrich_ok","link_id":"%s","ms":%d',
                     link_id, int((time.monotonic() - _t0) * 1000)
@@ -107,5 +123,34 @@ async def enrich_link(link_id: UUID) -> None:
                 )
                 if link.enrich_attempts >= MAX_ENRICH_ATTEMPTS:
                     link.status = LinkStatus.failed
+                await session.commit()
+                return
 
-            await session.commit()
+            # ---- Stage 2: summarize (decoupled) ----
+            # Runs after the category is already persisted. A failure here only
+            # logs — it never affects the committed category/status.
+            try:
+                body_text: str | None = None
+                if meta.html:
+                    body_text, word_count = article_body.extract_body(
+                        meta.html, url=link.canonical_url
+                    )
+                    if not article_body.qualifies_as_article(word_count):
+                        body_text = None
+
+                if body_text:
+                    summary = await get_summarizer().summarize(
+                        title=link.title, article_body=body_text
+                    )
+                    if summary is not None:
+                        link.summary_segments = summary
+                        await session.commit()
+                        logger.info(
+                            '"event":"summary_ok","link_id":"%s","ms":%d',
+                            link_id, int((time.monotonic() - _t0) * 1000)
+                        )
+            except Exception as sum_exc:
+                logger.warning(
+                    '"event":"summary_fail","link_id":"%s","error":"%s"',
+                    link_id, sum_exc
+                )

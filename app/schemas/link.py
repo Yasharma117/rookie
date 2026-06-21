@@ -26,6 +26,19 @@ class CategoryRef(BaseModel):
     confidence: float | None = None
 
 
+class SummarySegmentOut(BaseModel):
+    """One segment of the structured article-summary sentence.
+
+    `emphasis` is null for connective grammar, or 1/2/3 for the three
+    load-bearing key phrases (in reading order).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    text: str
+    emphasis: int | None = None
+
+
 class LinkOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +56,7 @@ class LinkOut(BaseModel):
     ingested_at: datetime
     enriched_at: datetime | None
     categories: list[CategoryRef] = []
+    summary_segments: list[SummarySegmentOut] | None = None
 
 
 class LinkListOut(BaseModel):

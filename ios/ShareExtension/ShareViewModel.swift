@@ -195,20 +195,21 @@ final class ShareViewModel: ObservableObject {
 
     private func startPolling(linkID: UUID) {
         Task {
-            var attempts = 0
-            let maxAttempts = 5
-            while attempts < maxAttempts {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                
+            // Quick ramp instead of a flat 2s: the category now lands ~1-2s
+            // server-side, so poll early and often, then back off. Total ~7s.
+            let delaysMs: [UInt64] = [500, 800, 1200, 1800, 2500]
+            for (attempt, delayMs) in delaysMs.enumerated() {
+                try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+
                 guard case .partial(let currentResponse) = state, currentResponse.id == linkID else {
                     break
                 }
-                
+
                 do {
-                    print("DEBUG: polling link \(linkID) (attempt \(attempts + 1))...")
+                    print("DEBUG: polling link \(linkID) (attempt \(attempt + 1))...")
                     let updatedResponse = try await api.fetchLink(id: linkID, token: token)
                     print("DEBUG: polled link status = \(updatedResponse.status)")
-                    
+
                     if updatedResponse.status == .enriched {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             self.state = .ready(updatedResponse)
@@ -219,8 +220,6 @@ final class ShareViewModel: ObservableObject {
                 } catch {
                     print("DEBUG: polling failed: \(error)")
                 }
-                
-                attempts += 1
             }
         }
     }

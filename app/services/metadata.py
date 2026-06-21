@@ -26,6 +26,12 @@ class FetchedMetadata:
     author: str | None = None
     thumbnail_url: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+    # Raw HTML of the page, populated when we actually fetched HTML (vs. oembed-only).
+    # Reused by the article-body extractor to avoid a second HTTP request.
+    html: str | None = None
+    # Final URL after following redirects — used to (re)canonicalize the link
+    # in enrichment, since the POST path no longer resolves redirects.
+    final_url: str | None = None
 
 
 def _meta(soup: BeautifulSoup, *names: str) -> str | None:
@@ -53,7 +59,12 @@ def _parse_html(html: str) -> FetchedMetadata:
         "twitter:card": _meta(soup, "twitter:card"),
     }
     return FetchedMetadata(
-        title=title, description=description, author=author, thumbnail_url=thumb, raw=raw
+        title=title,
+        description=description,
+        author=author,
+        thumbnail_url=thumb,
+        raw=raw,
+        html=html,
     )
 
 
@@ -149,16 +160,21 @@ async def fetch_metadata(
         except httpx.HTTPError:
             return FetchedMetadata()
 
+        final_url = str(r.url)
         ctype = r.headers.get("content-type", "")
         if "html" not in ctype.lower():
-            return FetchedMetadata()
+            return FetchedMetadata(final_url=final_url)
 
         # Prefer structured data (JSON-LD / microdata) — richer than OG tags
         structured = _parse_structured_data(r.text, url)
         if structured and structured.title:
+            structured.html = r.text
+            structured.final_url = final_url
             return structured
 
-        return _parse_html(r.text)
+        parsed = _parse_html(r.text)
+        parsed.final_url = final_url
+        return parsed
     finally:
         if own:
             await client.aclose()

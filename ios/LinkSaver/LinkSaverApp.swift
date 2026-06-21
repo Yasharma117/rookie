@@ -26,7 +26,7 @@ final class AppState: ObservableObject {
     private let api = APIClient.shared
 
     init() {
-        isSignedIn = keychain.ingestToken() != nil
+        isSignedIn = keychain.effectiveIngestToken() != nil
         drainQueueIfNeeded()
     }
 
@@ -42,7 +42,7 @@ final class AppState: ObservableObject {
     }
 
     private func drainQueueIfNeeded() {
-        guard let token = keychain.ingestToken(), !queue.peek().isEmpty else { return }
+        guard let token = keychain.effectiveIngestToken(), !queue.peek().isEmpty else { return }
         Task {
             await queue.drain(api: api, token: token)
         }

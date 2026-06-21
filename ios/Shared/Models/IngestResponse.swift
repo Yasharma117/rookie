@@ -13,6 +13,7 @@ struct IngestResponse: Decodable, Identifiable, Hashable {
     let ingestedAt: Date
     let enrichedAt: Date?
     let categories: [CategoryRef]
+    let summarySegments: [SummarySegment]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -24,6 +25,7 @@ struct IngestResponse: Decodable, Identifiable, Hashable {
         case ingestedAt = "ingested_at"
         case enrichedAt = "enriched_at"
         case categories
+        case summarySegments = "summary_segments"
     }
 
     var isDuplicate: Bool {
@@ -43,6 +45,13 @@ struct CategoryRef: Decodable, Identifiable, Hashable {
     let id: UUID
     let name: String
     let confidence: Double?
+}
+
+/// One segment of the structured article-summary sentence.
+/// `emphasis` is nil for connective grammar, or 1/2/3 for the load-bearing key phrases.
+struct SummarySegment: Decodable, Hashable {
+    let text: String
+    let emphasis: Int?
 }
 
 enum LinkStatus: String, Decodable, Hashable {
@@ -95,7 +104,8 @@ extension IngestResponse {
             thumbnailURL: nil,
             ingestedAt: ingestedAt,
             enrichedAt: status == .enriched ? Date() : nil,
-            categories: categories
+            categories: categories,
+            summarySegments: nil
         )
     }
 }
