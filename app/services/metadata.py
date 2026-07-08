@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
@@ -17,6 +18,19 @@ OEMBED_PROVIDERS: dict[SourcePlatform, str] = {
     SourcePlatform.youtube: "https://www.youtube.com/oembed?url={url}&format=json",
     SourcePlatform.vimeo: "https://vimeo.com/api/oembed.json?url={url}",
 }
+
+# YouTube oEmbed returns the 4:3 hqdefault.jpg (and sd/mqdefault variants), which
+# for most videos is a 16:9 frame letterboxed with baked-in black bars. maxresdefault
+# is the clean, bar-free 16:9 frame, available for essentially all HD uploads; a rare
+# miss 404s and the client falls back to the generated poster. Vimeo/other hosts don't
+# use this filename scheme, so the pattern leaves them untouched.
+_YT_THUMB_RE = re.compile(r"/(?:hq|sd|mq)default\.jpg")
+
+
+def upgrade_youtube_thumbnail(url: str | None) -> str | None:
+    if not url:
+        return url
+    return _YT_THUMB_RE.sub("/maxresdefault.jpg", url)
 
 
 @dataclass
@@ -131,11 +145,14 @@ async def _fetch_oembed(
         data = r.json()
     except (httpx.HTTPError, ValueError):
         return None
+    thumb = data.get("thumbnail_url")
+    if platform is SourcePlatform.youtube:
+        thumb = upgrade_youtube_thumbnail(thumb)
     return FetchedMetadata(
         title=data.get("title"),
         description=data.get("description"),
         author=data.get("author_name"),
-        thumbnail_url=data.get("thumbnail_url"),
+        thumbnail_url=thumb,
         raw={"oembed": data},
     )
 
@@ -193,7 +210,7 @@ def remote_thumbnail_url(raw: dict[str, Any] | None) -> str | None:
 
     oembed = raw.get("oembed")
     if isinstance(oembed, dict) and oembed.get("thumbnail_url"):
-        return str(oembed["thumbnail_url"])
+        return upgrade_youtube_thumbnail(str(oembed["thumbnail_url"]))
 
     for tag in ("og:image", "twitter:image"):
         if raw.get(tag):

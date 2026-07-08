@@ -1149,9 +1149,26 @@ private struct HomeCard: View {
             if let urlString = link.thumbnailURL,
                let url = URL(string: urlString) {
                 AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    if isLandscapeThumbnail {
+                        // Landscape video frames (YouTube/Vimeo) are far wider than
+                        // the portrait poster. scaledToFill would crop the sides and
+                        // chop off any baked-in title text, so fit the whole frame and
+                        // fill the leftover space with a soft blurred copy of itself.
+                        ZStack {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .blur(radius: 28)
+                                .opacity(0.6)
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        }
+                    } else {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    }
                 } placeholder: {
                     fallbackPoster
                 }
@@ -1168,6 +1185,17 @@ private struct HomeCard: View {
 
     private var fallbackPoster: some View {
         GeneratedPosterArtwork(link: link, categoryColor: categoryColor)
+    }
+
+    /// Platforms whose thumbnails are wide 16:9 video frames — these get the
+    /// contained fit + blurred backdrop instead of an edge-cropping fill.
+    private var isLandscapeThumbnail: Bool {
+        switch link.sourcePlatform {
+        case .youtube, .vimeo:
+            return true
+        case .instagram, .tiktok, .linkedin, .reddit, .web, .x:
+            return false
+        }
     }
 
     private var isVideoFirst: Bool {
