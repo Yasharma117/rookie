@@ -41,8 +41,12 @@ async def upload_thumbnail(body: bytes, content_type: str, link_id: str) -> str:
     return key
 
 
+def is_configured() -> bool:
+    return bool(settings.s3_endpoint_url)
+
+
 def public_url(key: str | None) -> str | None:
-    if not key:
+    if not key or not is_configured():
         return None
     base = settings.s3_endpoint_url.rstrip("/")
     return f"{base}/{settings.s3_bucket}/{key}"

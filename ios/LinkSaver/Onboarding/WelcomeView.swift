@@ -34,7 +34,7 @@ struct WelcomeView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color(.systemBackground))
                         .background(.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -46,7 +46,7 @@ struct WelcomeView: View {
 
                 #if DEBUG
                 Button("Skip sign-in (dev)") {
-                    appState.signIn(ingestToken: "dev-token")
+                    appState.skipSignInForDev()
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)

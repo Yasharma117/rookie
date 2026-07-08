@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.models import IngestToken, User
 from app.services import clerk
-from app.services.ingest_token import hash_token
+from app.services.ingest_token import TOKEN_PREFIX, hash_token
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -73,12 +73,16 @@ async def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ) -> User:
-    """App-user auth: Clerk Bearer or dev X-API-Key. Rejects ingest tokens."""
+    """App-user auth: Clerk Bearer or X-API-Key. An X-API-Key that carries the
+    rk_ingest_ prefix is resolved as an ingest token — the iOS app holds only
+    the token minted at sign-in and uses it as its API credential everywhere."""
     if authorization and authorization.lower().startswith("bearer ") and clerk.is_configured():
         token = authorization.split(" ", 1)[1].strip()
         return await _user_from_clerk(session, token)
 
     if x_api_key:
+        if x_api_key.startswith(TOKEN_PREFIX):
+            return await _user_from_ingest_token(session, x_api_key)
         return await _user_from_api_key(session, x_api_key)
 
     raise HTTPException(
@@ -103,6 +107,8 @@ async def get_ingest_user(
         return await _user_from_ingest_token(session, x_ingest_token)
 
     if x_api_key:
+        if x_api_key.startswith(TOKEN_PREFIX):
+            return await _user_from_ingest_token(session, x_api_key)
         return await _user_from_api_key(session, x_api_key)
 
     raise HTTPException(

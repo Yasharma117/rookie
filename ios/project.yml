@@ -41,6 +41,11 @@ targets:
           - group.com.becauseyssaidso.shared
         keychain-access-groups:
           - $(AppIdentifierPrefix)com.becauseyssaidso.shared
+        # Sign in with Apple requires a PAID Apple Developer team — personal
+        # teams can't provision it. Uncomment after enrolling (also needed
+        # for TestFlight), and mirror in LinkSaver/LinkSaver.entitlements:
+        # com.apple.developer.applesignin:
+        #   - Default
     info:
       path: LinkSaver/Info.plist
       properties:

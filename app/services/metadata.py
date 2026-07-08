@@ -57,6 +57,7 @@ def _parse_html(html: str) -> FetchedMetadata:
         "og:image": _meta(soup, "og:image"),
         "og:site_name": _meta(soup, "og:site_name"),
         "twitter:card": _meta(soup, "twitter:card"),
+        "twitter:image": _meta(soup, "twitter:image", "twitter:image:src"),
     }
     return FetchedMetadata(
         title=title,
@@ -178,6 +179,37 @@ async def fetch_metadata(
     finally:
         if own:
             await client.aclose()
+
+
+def remote_thumbnail_url(raw: dict[str, Any] | None) -> str | None:
+    """Recover the source-page thumbnail URL from a link's stored raw_metadata.
+
+    Serves as the API-level fallback when no thumbnail was mirrored to object
+    storage (e.g. S3 unconfigured in the deployment) — covers all three raw
+    shapes we persist: oembed, OG/twitter tags, and JSON-LD.
+    """
+    if not raw:
+        return None
+
+    oembed = raw.get("oembed")
+    if isinstance(oembed, dict) and oembed.get("thumbnail_url"):
+        return str(oembed["thumbnail_url"])
+
+    for tag in ("og:image", "twitter:image"):
+        if raw.get(tag):
+            return str(raw[tag])
+
+    item = raw.get("json-ld")
+    if isinstance(item, dict):
+        thumb = item.get("image") or item.get("thumbnailUrl")
+        if isinstance(thumb, dict):
+            thumb = thumb.get("url")
+        elif isinstance(thumb, list) and thumb:
+            first = thumb[0]
+            thumb = first.get("url") if isinstance(first, dict) else first
+        if thumb:
+            return str(thumb)
+    return None
 
 
 async def download_thumbnail(

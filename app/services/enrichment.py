@@ -73,7 +73,7 @@ async def enrich_link(link_id: UUID) -> None:
                     if resolved and resolved != link.canonical_url:
                         link.canonical_url = resolved
 
-                if meta.thumbnail_url:
+                if meta.thumbnail_url and storage.is_configured():
                     try:
                         thumb = await metadata.download_thumbnail(meta.thumbnail_url, client)
                         if thumb is not None:

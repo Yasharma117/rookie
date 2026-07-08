@@ -36,6 +36,7 @@
 		94CC5D001AA280E41B23B374 /* OfflineQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C2865E8EE1FFC098B3915A /* OfflineQueue.swift */; };
 		A205F6895CA3BE4859674029 /* ReminderToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C1B5BD1931483D39D166FC /* ReminderToggle.swift */; };
 		A97E9453196DCBEAD62CBEDB /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E1A109F6901FFD661CC776 /* Constants.swift */; };
+		AB12CD34EF5601789ABC0001 /* CategoryPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF5601789ABC0002 /* CategoryPickerView.swift */; };
 		AEF1153EFDBB73E7A543DE2E /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 093CE6217C795572672CBE14 /* SignInView.swift */; };
 		B39DFAEE25F3569456970908 /* IngestResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C765F40766B322B0681FB8D /* IngestResponse.swift */; };
 		B4E5A601678A9B0BA77F3ED1 /* IngestTokenOut.swift in Sources */ = {isa = PBXBuildFile; fileRef = B204D1EA523B03766B529D70 /* IngestTokenOut.swift */; };
@@ -90,17 +91,18 @@
 		495C59F543C87286C3B37F75 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		51155B8F4C48601A2EE4733F /* ShareViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewModel.swift; sourceTree = "<group>"; };
 		5F7AA2776CD32FA4707DE431 /* LinkSaverApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkSaverApp.swift; sourceTree = "<group>"; };
-		617ABC52B3D6443EDD0D1AFD /* LinkSaver.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LinkSaver.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		617ABC52B3D6443EDD0D1AFD /* LinkSaver.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LinkSaver.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61C2865E8EE1FFC098B3915A /* OfflineQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineQueue.swift; sourceTree = "<group>"; };
 		6BF17FBC65784642692E7046 /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
 		6FC24C7132B8B8DBF791AE82 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		73C1B5BD1931483D39D166FC /* ReminderToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderToggle.swift; sourceTree = "<group>"; };
 		7562A1AFD5F9ED52EF659707 /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
-		765583CA4F2A1F96A837ED6A /* ShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		765583CA4F2A1F96A837ED6A /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		77907D0A3931BC9484DA1472 /* InstallExtensionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallExtensionView.swift; sourceTree = "<group>"; };
 		8C765F40766B322B0681FB8D /* IngestResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestResponse.swift; sourceTree = "<group>"; };
 		987A9CF0364EE315577A8856 /* ArticleCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleCard.swift; sourceTree = "<group>"; };
 		A2D49C942668C56B7678D90E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		AB12CD34EF5601789ABC0002 /* CategoryPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryPickerView.swift; sourceTree = "<group>"; };
 		B0EBF4E08F69C8AF8949497E /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		B204D1EA523B03766B529D70 /* IngestTokenOut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestTokenOut.swift; sourceTree = "<group>"; };
 		B3E1C2379C13B93D4FD446F1 /* NoteField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteField.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 		A2728634CFDD0789F1A5BF61 /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
+				AB12CD34EF5601789ABC0002 /* CategoryPickerView.swift */,
 				77907D0A3931BC9484DA1472 /* InstallExtensionView.swift */,
 				093CE6217C795572672CBE14 /* SignInView.swift */,
 				B0EBF4E08F69C8AF8949497E /* WelcomeView.swift */,
@@ -281,14 +284,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-					04665E488D75B2C34C10D4C5 = {
-						DevelopmentTeam = "";
-					};
-					F2C3D05C9F48A2FE42292487 = {
-						DevelopmentTeam = "";
-					};
-				};
 			};
 			buildConfigurationList = A72422C54AD480BF91DA9ADB /* Build configuration list for PBXProject "LinkSaver" */;
 			developmentRegion = en;
@@ -319,6 +314,7 @@
 				502BC0888F4FF892F7C6A256 /* ArticleCard.swift in Sources */,
 				93F02923A93C31053F559957 /* Category.swift in Sources */,
 				42F42ECD489DE74071FC163A /* CategoryChipRow.swift in Sources */,
+				AB12CD34EF5601789ABC0001 /* CategoryPickerView.swift in Sources */,
 				A97E9453196DCBEAD62CBEDB /* Constants.swift in Sources */,
 				4A5877565D5F884805C4A057 /* DevicesView.swift in Sources */,
 				F8ACDD9AFE009B11AC847154 /* InboxView.swift in Sources */,
@@ -385,8 +381,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = LinkSaver/LinkSaver.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = F7488W732D;
 				INFOPLIST_FILE = LinkSaver/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -394,6 +391,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.becauseyssaidso.LinkSaver;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -404,7 +402,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = F7488W732D;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -423,7 +421,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = F7488W732D;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -500,8 +498,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = LinkSaver/LinkSaver.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = F7488W732D;
 				INFOPLIST_FILE = LinkSaver/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -509,6 +508,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.becauseyssaidso.LinkSaver;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

@@ -151,24 +151,54 @@ final class APIClient {
         }
     }
 
-    func mintIngestToken(appleJWT: String) async throws -> String {
-        struct ExchangeRequest: Encodable { let apple_jwt: String }
-        struct ExchangeResponse: Decodable { let token: String }
+    struct AuthExchangeResult: Decodable {
+        let token: String
+        let onboarded: Bool
+    }
+
+    func mintIngestToken(appleJWT: String, deviceLabel: String? = nil) async throws -> AuthExchangeResult {
+        struct ExchangeRequest: Encodable {
+            let apple_jwt: String
+            let device_label: String?
+        }
         var request = urlRequest(path: "v1/auth/exchange", method: "POST")
-        request.httpBody = try encoder.encode(ExchangeRequest(apple_jwt: appleJWT))
-        let response: ExchangeResponse = try await perform(request)
-        return response.token
+        request.httpBody = try encoder.encode(
+            ExchangeRequest(apple_jwt: appleJWT, device_label: deviceLabel)
+        )
+        return try await perform(request)
+    }
+
+    func fetchMe(token: String) async throws -> MeResponse {
+        var request = urlRequest(path: "v1/me", method: "GET")
+        request.setValue(token, forHTTPHeaderField: "X-API-Key")
+        return try await perform(request)
+    }
+
+    func fetchCatalog() async throws -> [CatalogEntry] {
+        let request = urlRequest(path: "v1/onboarding/catalog", method: "GET")
+        return try await perform(request)
+    }
+
+    @discardableResult
+    func completeOnboarding(slugs: [String], token: String) async throws -> [Category] {
+        struct OnboardingRequest: Encodable { let slugs: [String] }
+        struct OnboardingResponse: Decodable { let categories: [Category] }
+        var request = urlRequest(path: "v1/onboarding", method: "POST")
+        request.setValue(token, forHTTPHeaderField: "X-API-Key")
+        request.httpBody = try encoder.encode(OnboardingRequest(slugs: slugs))
+        let response: OnboardingResponse = try await perform(request)
+        return response.categories
     }
 
     func fetchTokens(token: String) async throws -> [IngestTokenOut] {
         var request = urlRequest(path: "v1/ingest-tokens", method: "GET")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(token, forHTTPHeaderField: "X-API-Key")
         return try await perform(request)
     }
 
     func revokeToken(id: UUID, token: String) async throws {
         var request = urlRequest(path: "v1/ingest-tokens/\(id.uuidString.lowercased())", method: "DELETE")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(token, forHTTPHeaderField: "X-API-Key")
         try await performVoid(request)
     }
 
@@ -219,6 +249,22 @@ final class APIClient {
                 throw APIError.networkUnavailable
             }
         }
+    }
+
+    struct MeResponse: Decodable {
+        let id: UUID
+        let email: String?
+        let onboarded: Bool
+    }
+
+    struct CatalogEntry: Decodable, Identifiable, Hashable {
+        let slug: String
+        let name: String
+        let emoji: String
+        let color: String
+        let description: String
+
+        var id: String { slug }
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {

@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     clerk_issuer: str = ""
     clerk_jwks_url: str = ""
 
+    # Audience for Sign in with Apple identity tokens (the iOS bundle id).
+    apple_bundle_id: str = "com.becauseyssaidso.LinkSaver"
+
+    # Shared secret for /v1/admin/* cron endpoints. Empty disables them.
+    admin_secret: str = ""
+
     s3_endpoint_url: str = ""
     s3_access_key: str = ""
     s3_secret_key: str = ""

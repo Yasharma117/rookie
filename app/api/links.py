@@ -63,7 +63,10 @@ def _build_out(link: Link, categories: list[CategoryRef]) -> LinkOut:
         author=link.author,
         note=link.note,
         remind_at=link.remind_at,
-        thumbnail_url=storage.public_url(link.thumbnail_s3_key),
+        thumbnail_url=(
+            storage.public_url(link.thumbnail_s3_key)
+            or metadata.remote_thumbnail_url(link.raw_metadata)
+        ),
         ingested_at=link.ingested_at,
         enriched_at=link.enriched_at,
         categories=categories,

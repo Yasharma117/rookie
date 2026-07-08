@@ -19,6 +19,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import select
 
+from app.api import admin as admin_api
+from app.api import auth as auth_api
 from app.api import categories as categories_api
 from app.api import ingest_tokens as ingest_tokens_api
 from app.api import links as links_api
@@ -128,6 +130,8 @@ def create_app() -> FastAPI:
     app.include_router(links_api.router)
     app.include_router(categories_api.router)
     app.include_router(ingest_tokens_api.router)
+    app.include_router(auth_api.router)
+    app.include_router(admin_api.router)
     return app
 
 
