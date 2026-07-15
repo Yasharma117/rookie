@@ -14,6 +14,16 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 RookieBot/0.1"
 )
 
+# Instagram serves a login wall to normal browser/bot UAs, but returns the Open
+# Graph tags (incl. og:image) to the Facebook link-preview crawler — the same
+# path iMessage/WhatsApp/Slack previews use. The og:image is a signed,
+# short-lived scontent.cdninstagram.com URL, so callers MUST mirror it to object
+# storage promptly; hotlinking it breaks within days.
+CRAWLER_USER_AGENT = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+
+# Platforms that gate metadata behind the crawler UA above.
+_CRAWLER_UA_PLATFORMS: set[SourcePlatform] = {SourcePlatform.instagram}
+
 OEMBED_PROVIDERS: dict[SourcePlatform, str] = {
     SourcePlatform.youtube: "https://www.youtube.com/oembed?url={url}&format=json",
     SourcePlatform.vimeo: "https://vimeo.com/api/oembed.json?url={url}",
@@ -172,8 +182,16 @@ async def fetch_metadata(
         if oembed and oembed.title:
             return oembed
 
+        # Some platforms (Instagram) only reveal OG tags to the FB preview
+        # crawler UA; override just this request so the shared client's default
+        # UA still applies everywhere else.
+        get_headers = (
+            {"User-Agent": CRAWLER_USER_AGENT}
+            if platform in _CRAWLER_UA_PLATFORMS
+            else None
+        )
         try:
-            r = await client.get(url)
+            r = await client.get(url, headers=get_headers)
             r.raise_for_status()
         except httpx.HTTPError:
             return FetchedMetadata()
@@ -198,23 +216,38 @@ async def fetch_metadata(
             await client.aclose()
 
 
+# Hosts that serve signed, short-lived URLs (Instagram/Facebook CDNs). These
+# expire within days, so they're only usable once mirrored to our own storage —
+# never as a hotlink fallback, which would show a briefly-working, then-broken
+# image. Returning None here keeps such links thumbnail-less until storage is
+# configured and the mirror path can capture them durably.
+_EPHEMERAL_THUMB_HOSTS = ("cdninstagram.com", "fbcdn.net")
+
+
+def _durable_or_none(url: str | None) -> str | None:
+    if not url:
+        return None
+    return None if any(h in url for h in _EPHEMERAL_THUMB_HOSTS) else url
+
+
 def remote_thumbnail_url(raw: dict[str, Any] | None) -> str | None:
     """Recover the source-page thumbnail URL from a link's stored raw_metadata.
 
     Serves as the API-level fallback when no thumbnail was mirrored to object
     storage (e.g. S3 unconfigured in the deployment) — covers all three raw
-    shapes we persist: oembed, OG/twitter tags, and JSON-LD.
+    shapes we persist: oembed, OG/twitter tags, and JSON-LD. Ephemeral signed
+    CDN URLs are dropped, since hotlinking them would break within days.
     """
     if not raw:
         return None
 
     oembed = raw.get("oembed")
     if isinstance(oembed, dict) and oembed.get("thumbnail_url"):
-        return upgrade_youtube_thumbnail(str(oembed["thumbnail_url"]))
+        return _durable_or_none(upgrade_youtube_thumbnail(str(oembed["thumbnail_url"])))
 
     for tag in ("og:image", "twitter:image"):
         if raw.get(tag):
-            return str(raw[tag])
+            return _durable_or_none(str(raw[tag]))
 
     item = raw.get("json-ld")
     if isinstance(item, dict):
@@ -225,7 +258,7 @@ def remote_thumbnail_url(raw: dict[str, Any] | None) -> str | None:
             first = thumb[0]
             thumb = first.get("url") if isinstance(first, dict) else first
         if thumb:
-            return str(thumb)
+            return _durable_or_none(str(thumb))
     return None
 
 
