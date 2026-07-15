@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     s3_secret_key: str = ""
     s3_bucket: str = ""
     s3_region: str = "us-east-1"
+    # Public-serving base URL for stored objects, up to (not including) the key.
+    # Needed when the S3 upload endpoint differs from the public-read URL, as with
+    # Supabase (.../storage/v1/s3 to write, .../storage/v1/object/public/<bucket>
+    # to read). Empty falls back to "<endpoint>/<bucket>" (MinIO/R2-path style).
+    s3_public_base_url: str = ""
 
     dev_user_api_key: str
     dev_user_id: str

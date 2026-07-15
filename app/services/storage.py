@@ -15,7 +15,9 @@ def _client():
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
         region_name=settings.s3_region,
-        config=Config(signature_version="s3v4"),
+        # Path-style (host/bucket/key) is required by Supabase Storage and MinIO;
+        # the default virtual-host style (bucket.host) doesn't resolve for them.
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
     )
 
 
@@ -48,5 +50,7 @@ def is_configured() -> bool:
 def public_url(key: str | None) -> str | None:
     if not key or not is_configured():
         return None
+    if settings.s3_public_base_url:
+        return f"{settings.s3_public_base_url.rstrip('/')}/{key}"
     base = settings.s3_endpoint_url.rstrip("/")
     return f"{base}/{settings.s3_bucket}/{key}"
